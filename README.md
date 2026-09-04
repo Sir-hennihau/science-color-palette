@@ -13,7 +13,7 @@ design systems on take.
 ```bash
 pnpm install
 pnpm dev        # http://localhost:3000
-pnpm test       # engine suite, 187 tests
+pnpm test       # engine suite, 199 tests
 pnpm typecheck
 pnpm build      # static output in dist/client
 ```
@@ -40,10 +40,10 @@ the shared number implying they are interchangeable.
 
 **Some colours do not exist.** There is no dark vivid yellow; blue is most vivid
 when dark. For each hue the tool computes the *chroma envelope* — every colour a
-screen can show at that hue — and asks for a share of it rather than an absolute
-amount. One set of curves then produces a yellow ramp that peaks light and a
-blue ramp that peaks dark, with no hue-specific special cases. The "Limits of
-each hue" tab draws these envelopes with each ramp's path through them.
+screen can show at that hue — and works within it, so one set of curves produces
+a yellow ramp that peaks light and a blue ramp that peaks dark with no
+hue-specific special cases. The "Limits of each hue" tab draws these envelopes
+with each ramp's path through them.
 
 Colours are solved in OKLCH, whose constant-hue lines hold together far better
 than CIELAB's (where deep blues visibly swing toward purple as they darken).
