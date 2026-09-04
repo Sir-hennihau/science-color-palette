@@ -44,8 +44,9 @@ roughly true. Three ladder anchors are contracts derived from target ratios
 
 A neighbouring HSL- or hand-tuned-palette tool cannot truthfully claim this. The
 reference palettes are demonstrably inconsistent here: Tailwind's `yellow-500`
-sits ~15 L\* above its `blue-500`, so the yellow fails 3:1 on white while the
-blue passes, despite the shared number implying they are interchangeable.
+sits 20.3 L\* above its `blue-500` (75.9 against 55.6), so the yellow reaches
+only 1.92:1 on white and fails 3:1 while the blue passes at 3.68:1, despite the
+shared number implying they are interchangeable.
 
 Two further positions follow from it:
 
@@ -59,9 +60,20 @@ Two further positions follow from it:
 
 ## Operating Context
 
-- **The tool is its own front door.** One URL, no marketing page. Someone lands
-  on the working interface and has to understand it there; the explanation lives
-  inside the tool.
+- **The tool is still its own front door.** `/` is the working interface, not a
+  landing page: someone arriving at the root gets the palette, and the tool has
+  to be understandable there. What changed is that the *depth* now has somewhere
+  to live. Two reading routes sit beside it — `/how-to`, a reference for every
+  value the tool reports, and `/about`, the method and the sources it came from.
+  Both are reachable from a three-word navigation in the header and from links
+  in the tool's own footnote.
+
+  The division is deliberate and worth keeping: anything a user needs **to make
+  the palette** stays in the tool, and the reading pages only ever explain what
+  the tool already shows. A number that exists only on `/how-to` is a bug in the
+  tool. This is what lets the tool stay dense without becoming unexplained, and
+  it serves the "teaching the theory is part of the product" commitment above
+  without pushing the theory into the working surface.
 - The whole configuration lives in **typed URL search params**, so a palette is
   shareable by copying the address, survives a refresh, and the browser's back
   button is undo. A colour-picker drag previews locally and commits once on
@@ -136,14 +148,13 @@ Real and verifiable:
 
 - The engine's own output — every claim in the interface is measured on the
   shipped hex values at generation time.
-- ~199 engine tests (`pnpm test`): unit tests cross-checked against `culori`
+- 214 engine tests (`pnpm test`): unit tests cross-checked against `culori`
   and the `apca-w3` reference package as dev-only oracles; `calibration.test.ts`
   pinning the chroma curves against hand-tuned reference ramps *and* the places
   we deliberately diverge; golden snapshots; property tests over ~250 generated
   configs.
-- `scripts/e2e.mjs` — 34 browser checks including axe. 33/34 against a static
-  build is the known baseline (a deliberate theme-bootstrap hydration
-  mismatch), not a regression.
+- `scripts/e2e.mjs` — 43 browser checks including axe, run over all three
+  routes in both themes. 43/43 passes against a static build.
 - The comparison against reference palettes (Tailwind) is real and reproducible.
 
 Absent — must not be fabricated: user research, usage or adoption numbers,

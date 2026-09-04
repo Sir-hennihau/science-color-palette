@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+
 import { WarningMark } from './StatusMarks.tsx'
 import { usePaletteSession } from '../lib/palette-session.tsx'
 import { copyText } from '../lib/browser.ts'
@@ -11,6 +13,12 @@ import { WCAG_THRESHOLDS, type Ramp, type ResolvedLadder, type Swatch } from '..
  * as a table of colour. Structural marks are reserved for real information: a
  * ring means the shade is the user's own colour, kept exactly, and a warning
  * mark means the shade falls short of the contrast its position implies.
+ *
+ * A palette is a comparison, so the whole of it has to be in one view: a ramp
+ * you have to scroll to cannot be judged against the one at the top. Names sit
+ * in a gutter beside their row rather than on a line above it, and the swatch
+ * height is measured to the screen (`useFittedSwatchHeight`) so the default
+ * eleven families land inside the fold instead of a screen and a half.
  */
 export function PaletteBoard({ onCopied }: { onCopied: (message: string) => void }) {
   const { palette } = usePaletteSession()
@@ -22,15 +30,115 @@ export function PaletteBoard({ onCopied }: { onCopied: (message: string) => void
   const families = palette.ramps.filter((r) => r.role !== 'neutral')
   const neutrals = palette.ramps.filter((r) => r.role === 'neutral')
 
+  const { ref, swatchHeight } = useFittedSwatchHeight()
+
   return (
-    <div className="flex flex-col gap-8">
+    <div
+      ref={ref}
+      className="flex flex-col gap-2"
+      style={
+        swatchHeight === null
+          ? undefined
+          : {
+              ['--swatch-h' as string]: `${swatchHeight}px`,
+              // A short band has room for the shade number or the hex, not
+              // both, and the number is the one the ramp is read by.
+              ['--hex-vis' as string]: swatchHeight < HEX_MIN_SWATCH ? 'none' : 'inline',
+            }
+      }
+    >
       <ContractLegend ladder={palette.resolved.ladder} />
       <RampGroup ramps={families} onCopied={onCopied} />
       {neutrals.length > 0 && (
-        <RampGroup ramps={neutrals} heading="Greys" onCopied={onCopied} />
+        <RampGroup ramps={neutrals} heading="Greys" separated onCopied={onCopied} />
       )}
     </div>
   )
+}
+
+/** The gutter that carries each ramp's name, and the legend's matching indent. */
+const ROW_LAYOUT = 'sm:grid sm:grid-cols-[10.5rem_minmax(0,1fr)] sm:gap-x-3'
+
+/** How short a swatch may get before its own label stops fitting. */
+const MIN_SWATCH = 32
+/** Past this it is just a big rectangle; the extra height buys nothing. */
+const MAX_SWATCH = 80
+/** Below this a band holds one line of text, and it is the shade number. */
+const HEX_MIN_SWATCH = 44
+/** Breathing room under the last row, so the fold is not flush with it. */
+const BOTTOM_GUTTER = 12
+
+/**
+ * Fit the rows to whatever screen this is.
+ *
+ * The space left for the board is not knowable at build time — the header, the
+ * control band and the legend all change height with the window, the number of
+ * seeds and the step count — so it is measured rather than guessed. Nothing
+ * about the markup is hardcoded here either: everything in the board that is
+ * not a row is whatever height is left once the rows are subtracted from it.
+ *
+ * A row is as tall as the taller of its two sides, and a seeded family has a
+ * note to make in its gutter, so the answer is not a division — raising the
+ * swatch height does nothing for a row the gutter is already stretching. The
+ * largest height that still fits is found by searching for it, which lands in
+ * one pass rather than converging over several renders.
+ *
+ * Below `sm` the board is a single narrow column that was never going to fit a
+ * screen anyway; it keeps the fixed height from the stylesheet.
+ */
+function useFittedSwatchHeight() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [swatchHeight, setSwatchHeight] = useState<number | null>(null)
+
+  // No dependency list: the space above the board moves whenever the controls
+  // do — another seed, a wrapped band — and those arrive as ordinary renders.
+  // Measuring is cheap and settles immediately, since the height it produces
+  // is not one of its own inputs.
+  useEffect(() => {
+    const measure = () => {
+      const el = ref.current
+      if (!el) return
+
+      if (window.innerWidth < 640) {
+        setSwatchHeight(null)
+        return
+      }
+
+      const rows = [...el.querySelectorAll<HTMLElement>('[data-ramp]')]
+      if (rows.length === 0) return
+
+      // What each row's gutter needs regardless of how tall its swatches are.
+      const gutters = rows.map((row) => row.firstElementChild?.getBoundingClientRect().height ?? 0)
+      const box = el.getBoundingClientRect()
+      const rowsHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
+      const chrome = box.height - rowsHeight
+      const room = window.innerHeight - box.top - BOTTOM_GUTTER - chrome
+
+      const fits = (height: number) =>
+        gutters.reduce((sum, gutter) => sum + Math.max(gutter, height), 0) <= room
+
+      let low = MIN_SWATCH
+      let high = MAX_SWATCH
+      let best = MIN_SWATCH
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        if (fits(middle)) {
+          best = middle
+          low = middle + 1
+        } else {
+          high = middle - 1
+        }
+      }
+
+      setSwatchHeight((previous) => (previous === best ? previous : best))
+    }
+
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  })
+
+  return { ref, swatchHeight }
 }
 
 /**
@@ -54,7 +162,7 @@ function ContractLegend({ ladder }: { ladder: ResolvedLadder }) {
     .join(' · ')
 
   return (
-    <div>
+    <div className={ROW_LAYOUT}>
       {/* Narrow screens cannot fit a caption under a column, so the same fact
           is stated as a sentence — and it carries the accessible name at every
           width, since a grid of loose words reads poorly aloud. */}
@@ -63,9 +171,11 @@ function ContractLegend({ ladder }: { ladder: ResolvedLadder }) {
         <span className="tabular">{sentence}</span>
       </p>
 
+      <div aria-hidden="true" className="hidden sm:block" />
+
       <div
         aria-hidden="true"
-        className="hidden grid-cols-[repeat(var(--steps),minmax(0,1fr))] gap-px border-b border-line pb-1.5 sm:grid"
+        className="hidden grid-cols-[repeat(var(--steps),minmax(0,1fr))] gap-px border-b border-line pb-1 sm:grid"
         style={{ ['--steps' as string]: ladder.steps }}
       >
         {/* Only the marked columns carry anything. Every swatch prints its own
@@ -76,7 +186,7 @@ function ContractLegend({ ladder }: { ladder: ResolvedLadder }) {
           if (!contract) return <div key={label} />
 
           return (
-            <div key={label} className="flex flex-col gap-1">
+            <div key={label} className="flex flex-col gap-0.5">
               <span className="tabular text-[10px] font-medium leading-none">{label}</span>
               <span className="h-0.5 w-full bg-ink" />
               <span className="text-[10px] leading-tight text-ink-muted">
@@ -100,21 +210,23 @@ function useFor(target: number): string {
 function RampGroup({
   ramps,
   heading,
+  separated,
   onCopied,
 }: {
   ramps: Ramp[]
   heading?: string
+  separated?: boolean
   onCopied: (message: string) => void
 }) {
   if (ramps.length === 0) return null
 
   return (
-    <section className="flex flex-col gap-4">
-      {heading && (
-        <h2 className="text-[13px] font-medium text-ink-muted border-b border-line pb-1.5">
-          {heading}
-        </h2>
-      )}
+    // Rows sit all but flush, so eleven ramps read as one block to compare
+    // down a column rather than as eleven separate objects.
+    <section className={`flex flex-col gap-0.5 ${separated ? 'border-t border-line pt-1.5' : ''}`}>
+      {/* The rule above is the whole visual separation; the heading is here
+          for the document outline, where a rule says nothing. */}
+      {heading && <h2 className="sr-only">{heading}</h2>}
       {ramps.map((ramp) => (
         <RampRow key={ramp.role} ramp={ramp} onCopied={onCopied} />
       ))}
@@ -127,31 +239,39 @@ function RampRow({ ramp, onCopied }: { ramp: Ramp; onCopied: (message: string) =
   const broken = ramp.report.brokenGuarantees.length > 0
 
   return (
-    <div className="flex flex-col gap-1.5" data-ramp={ramp.name}>
-      <div className="flex items-baseline gap-2.5 flex-wrap">
-        <h3 className="text-[15px] font-medium">{ramp.name}</h3>
+    <div className={`flex flex-col gap-1 ${ROW_LAYOUT} sm:items-start`} data-ramp={ramp.name}>
+      {/* The name and everything qualifying it stack in the gutter beside the
+          row rather than on a line above it, which is most of what buys the
+          whole palette a place on one screen. */}
+      <div className="flex items-baseline gap-x-2 gap-y-0.5 flex-wrap sm:min-w-0 sm:pt-0.5">
+        <h3 className="text-[14px] font-medium leading-none">{ramp.name}</h3>
 
         {ramp.hue !== null && (
-          <span className="tabular text-[11px] text-ink-faint">{ramp.hue.toFixed(0)}°</span>
+          <span className="tabular text-[11px] leading-none text-ink-faint">
+            {ramp.hue.toFixed(0)}°
+          </span>
         )}
 
         {ramp.seed && <YoursBadge />}
-        {ramp.seed && <SeedNote ramp={ramp} />}
 
-        {!ramp.report.usesSharedLadder && (
-          <span className="text-[11px] text-ink-faint">own lightness scale</span>
-        )}
+        <div className="flex flex-wrap items-baseline gap-x-2 text-[11px] leading-tight sm:basis-full">
+          {ramp.seed && <SeedNote ramp={ramp} />}
 
-        {broken && (
-          <span className="text-[11px] text-warn inline-flex items-center gap-1">
-            <WarningMark />
-            {ramp.report.brokenGuarantees.map((b) => b.label).join(', ')} below usual contrast
-          </span>
-        )}
+          {!ramp.report.usesSharedLadder && (
+            <span className="text-ink-faint">own scale</span>
+          )}
+
+          {broken && (
+            <span className="text-warn inline-flex items-center gap-1">
+              <WarningMark />
+              {ramp.report.brokenGuarantees.map((b) => b.label).join(', ')} below contrast
+            </span>
+          )}
+        </div>
       </div>
 
       <div
-        className="grid gap-px"
+        className="grid w-full gap-px"
         style={{ gridTemplateColumns: `repeat(${ramp.swatches.length}, minmax(0, 1fr))` }}
       >
         {ramp.swatches.map((swatch) => (
@@ -186,7 +306,7 @@ function SeedNote({ ramp }: { ramp: Ramp }) {
 
   if (seed.mode === 'exact') {
     return (
-      <span className="text-[11px] text-ink-muted">
+      <span className="text-ink-muted">
         <span className="tabular">{seed.input}</span> kept exactly at {seed.slotLabel}
       </span>
     )
@@ -195,7 +315,7 @@ function SeedNote({ ramp }: { ramp: Ramp }) {
   const moved = seed.delta.magnitude !== 'none' && seed.delta.magnitude !== 'subtle'
 
   return (
-    <span className="text-[11px] text-ink-muted">
+    <span className="text-ink-muted">
       <span className="tabular">{seed.input}</span>
       {moved ? ` adjusted at ${seed.slotLabel}` : ` matched at ${seed.slotLabel}`}
     </span>
@@ -229,13 +349,13 @@ function SwatchButton({
       aria-label={`${ramp.name} ${swatch.label}, ${swatch.hex}${
         swatch.isSeed ? ', your colour kept exactly' : ''
       }${failed ? ', below the usual contrast for this position' : ''}. Copies on click.`}
-      className="group relative flex h-16 flex-col justify-between p-1 text-left transition-transform hover:z-10 hover:scale-[1.04] sm:h-20 sm:p-1.5"
+      className="group relative flex h-16 flex-col justify-between p-1 text-left transition-transform hover:z-10 hover:scale-[1.04] sm:h-[var(--swatch-h,5rem)] sm:p-1.5"
       style={{ backgroundColor: swatch.hex, color: swatch.onHexWcag }}
     >
       <span className="tabular text-[10px] font-medium leading-none">{swatch.label}</span>
 
       <span className="flex items-center justify-between gap-0.5">
-        <span className="tabular hidden text-[9.5px] leading-none sm:inline">
+        <span className="tabular hidden text-[9.5px] leading-none sm:[display:var(--hex-vis,inline)]">
           {swatch.hex.slice(1)}
         </span>
         {failed && <WarningMark />}
@@ -258,4 +378,3 @@ function SwatchButton({
     </button>
   )
 }
-

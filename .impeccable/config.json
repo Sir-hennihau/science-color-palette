@@ -1,0 +1,20 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "10px",
+        "createdAt": "2026-09-04T18:47:53.051Z",
+        "reason": "Swatch-interior text (shade label, 'yours' badge) sits in a band the fit search can shrink to 32px; 11px micro plus the hex line overflows it. Pre-existing choice, unchanged by the one-view board work."
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "9.5px",
+        "createdAt": "2026-09-04T18:47:53.179Z",
+        "reason": "Hex line inside a swatch band; same 32px-band constraint as the 10px shade label, and it is hidden entirely below 44px."
+      }
+    ]
+  }
+}

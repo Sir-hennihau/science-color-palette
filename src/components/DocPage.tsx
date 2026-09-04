@@ -89,8 +89,9 @@ export function DocPage({
 
             <footer className="mt-12 border-t border-line pt-4 text-[12.5px] text-ink-muted">
               <p>
-                Every number on this page is produced by the engine or by its test suite, not
-                written down by hand. <DocLink to="/">Back to the tool</DocLink>.
+                Every number on this page comes from the engine, from its test suite, or from the
+                comparison scripts that sit alongside them, rather than being written down by hand.{' '}
+                <DocLink to="/">Back to the tool</DocLink>.
               </p>
             </footer>
           </main>

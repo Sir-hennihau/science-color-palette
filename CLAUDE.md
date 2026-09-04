@@ -122,6 +122,17 @@ through a transition, `commit()` writes one history entry. The pending patch is
 mirrored into a **ref** because a transition may not have flushed when a drag
 ends — reading it from React state loses quick flicks.
 
+A palette is a comparison, so `PaletteBoard` is built to put the whole of it on
+one screen: family names sit in a gutter beside their row, and the swatch height
+is *measured* rather than styled (`useFittedSwatchHeight` → the `--swatch-h`
+variable). The space above the board moves with the window, the seed count and
+the control band, so the hook takes the room it is actually left, subtracts what
+the board itself spends on anything that is not a row, and binary-searches the
+tallest swatch that still fits — a row is as tall as the taller of its gutter
+and its swatches, so this is a search rather than a division. Below `sm` it
+stands aside and the stylesheet's fixed height applies. Adding chrome inside the
+board (a heading, a wider gap) is paid for in swatch height on small screens.
+
 ## Gotchas
 
 **`vitest.config.ts` deliberately omits the `tanstackStart()` plugin.** Its
