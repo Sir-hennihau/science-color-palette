@@ -3,8 +3,16 @@
  * Centralised so determinism and precision claims can be audited in one place.
  */
 
-/** Channel slack when testing gamut membership, absorbing float noise. */
-export const GAMUT_EPS = 1e-7
+/**
+ * Channel slack when testing gamut membership.
+ *
+ * Absorbs round-trip noise through the cube roots in the OKLab transform: pure
+ * yellow, converted to OKLCH and back, lands at blue = -1.3e-7 despite being
+ * exactly `#ffff00`. Still far tighter than anything that could matter — one
+ * 8-bit code value is about 3e-4 in linear light even at the darkest end — so
+ * this cannot admit a colour that would visibly clip.
+ */
+export const GAMUT_EPS = 1e-6
 
 /** Bisection steps when solving OKLCH lightness for a luminance target. */
 export const SOLVE_L_ITERATIONS = 40

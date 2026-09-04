@@ -158,7 +158,7 @@ export interface LadderContract {
 export interface ResolvedConfig {
   seeds: ResolvedSeed[]
   ladder: ResolvedLadder
-  chromaPoints: { light: number; peak: number; dark: number }
+  chromaPoints: { light: number; peak: number; dark: number; ceilingScale: number }
   hueDrift: number
   neutrals: Required<NeutralsConfig>
   semantics: { enabled: boolean; harmonize: boolean; hues: Record<SemanticRole, number> }

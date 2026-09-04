@@ -38,7 +38,14 @@ export function hueCurve(base: number, driftPerRamp: number, tRef = 0.5): HueCur
   }
 }
 
-export const MAX_HUE_DRIFT = 30
+/**
+ * Widest drift offered.
+ *
+ * Generous because hand-tuned palettes use more than intuition suggests: the
+ * Tailwind yellow family rotates about 44 degrees from its lightest shade to
+ * its darkest, which is what turns its dark shades brown rather than olive.
+ */
+export const MAX_HUE_DRIFT = 60
 
 /** Clamp a requested drift into the supported range. */
 export function clampHueDrift(drift: number | undefined): number {

@@ -1,37 +1,68 @@
 /**
- * Chroma along a ramp, expressed as a *fraction of the available envelope*
- * rather than as an absolute number.
+ * Chroma along a ramp.
  *
- * This is the single decision that makes one set of curves work for every hue.
- * A ramp that held chroma constant would ask for colours that do not exist —
- * there is no dark vivid yellow — and one that scaled chroma with lightness
- * would leave blues washed out. Asking instead for "80% of whatever this hue
+ * Two rules act together, because neither works alone.
+ *
+ * Through the middle and dark end, chroma is a *share of the available
+ * envelope*. This is the decision that makes one set of curves work for every
+ * hue: a ramp holding chroma constant would ask for colours that do not exist —
+ * there is no dark vivid yellow — while asking for "90% of whatever this hue
  * can manage at this lightness" yields a yellow ramp that peaks light, a blue
  * ramp that peaks dark, and a consistent sense of colourfulness across both.
  *
- * The curve rises from a modest fraction at the light end to a peak mid-ramp
- * and eases off toward the dark end, which is the shape hand-tuned palettes
- * converge on.
+ * Near white that rule breaks down, and measurably so. Just past a hue's cusp
+ * the envelope falls away very steeply, so a barely perceptible difference in
+ * lightness swings the available chroma several-fold: at L* 98 a yellow has
+ * roughly 0.118 of chroma to play with, and at L* 98.6 only 0.034. A single
+ * share cannot serve every hue there — matching a hand-tuned palette's lightest
+ * yellow needs about 0.22 of the envelope, while its lightest blue needs all of
+ * it. So the lightest steps are governed by an absolute chroma ceiling instead,
+ * which is what gives curated palettes their consistently barely-tinted 50s.
+ *
+ * The numbers below are calibrated against the Tailwind default ramps, whose
+ * chromatic families sit at 0.85 to 1.0 of the envelope for most of their
+ * length — considerably bolder than intuition suggests.
  */
 
 import { monotoneCubic, type Curve, type Point } from './pchip.ts'
 import type { ChromaConfig, ChromaPreset } from '../types.ts'
 
 export interface ChromaPoints {
+  /** Share of the envelope at the light end. */
   light: number
+  /** Share at mid-ramp. */
   peak: number
+  /** Share at the dark end. */
   dark: number
+  /** Multiplier on the light-end absolute chroma ceiling. */
+  ceilingScale: number
 }
 
 export const CHROMA_PRESETS: Record<Exclude<ChromaPreset, 'custom'>, ChromaPoints> = {
-  vivid: { light: 0.6, peak: 0.95, dark: 0.7 },
-  natural: { light: 0.45, peak: 0.8, dark: 0.55 },
-  muted: { light: 0.3, peak: 0.5, dark: 0.35 },
+  vivid: { light: 0.98, peak: 0.98, dark: 0.92, ceilingScale: 1.3 },
+  natural: { light: 0.9, peak: 0.95, dark: 0.85, ceilingScale: 1 },
+  muted: { light: 0.5, peak: 0.6, dark: 0.5, ceilingScale: 0.7 },
 }
 
 export const DEFAULT_CHROMA_PRESET: ChromaPreset = 'natural'
 
-/** Resolve a chroma config into its three control fractions. */
+/**
+ * Absolute chroma ceiling by ramp position, at `ceilingScale` 1.
+ *
+ * Read off the widest chroma each step reaches across the reference ramps. Past
+ * roughly a third of the way down it exceeds anything the sRGB envelope offers,
+ * so it stops binding and the share rule takes over entirely.
+ */
+const CEILING_POINTS: readonly Point[] = [
+  { x: 0, y: 0.03 },
+  { x: 0.11, y: 0.075 },
+  { x: 0.22, y: 0.135 },
+  { x: 0.33, y: 0.19 },
+  { x: 0.5, y: 0.4 },
+  { x: 1, y: 0.4 },
+]
+
+/** Resolve a chroma config into its control values. */
 export function resolveChromaPoints(cfg: ChromaConfig | undefined): ChromaPoints {
   const preset = cfg?.preset ?? DEFAULT_CHROMA_PRESET
 
@@ -41,6 +72,7 @@ export function resolveChromaPoints(cfg: ChromaConfig | undefined): ChromaPoints
       light: clampFraction(cfg?.light ?? base.light),
       peak: clampFraction(cfg?.peak ?? base.peak),
       dark: clampFraction(cfg?.dark ?? base.dark),
+      ceilingScale: base.ceilingScale,
     }
   }
 
@@ -52,13 +84,25 @@ function clampFraction(v: number): number {
   return Math.min(1, Math.max(0, v))
 }
 
-/** Build the fraction-of-envelope curve for a ramp. */
+/** Build the share-of-envelope curve for a ramp. */
 export function chromaCurve(points: ChromaPoints): Curve {
   return monotoneCubic([
     { x: 0, y: points.light },
     { x: 0.5, y: points.peak },
     { x: 1, y: points.dark },
   ])
+}
+
+/** Build the absolute chroma ceiling curve for a ramp. */
+export function chromaCeilingCurve(points: ChromaPoints): Curve {
+  return monotoneCubic(
+    CEILING_POINTS.map((p) => ({ x: p.x, y: p.y * points.ceilingScale })),
+  )
+}
+
+/** A ceiling that is the same everywhere, for ramps with a fixed chroma budget. */
+export function constantCeiling(value: number): Curve {
+  return monotoneCubic([{ x: 0, y: value }])
 }
 
 /**
@@ -72,8 +116,8 @@ export function chromaCurve(points: ChromaPoints): Curve {
 export function warpChromaCurve(base: Curve, t: number, fraction: number): Curve {
   const at = base.at(t)
 
-  // A seed with no chroma cannot be reached by scaling; fall back to an
-  // additive-free flat curve so the ramp stays neutral rather than blowing up.
+  // A seed with no chroma cannot be reached by scaling; fall back to a flat
+  // curve so the ramp stays neutral rather than blowing up.
   if (at <= 1e-9) {
     return monotoneCubic([{ x: 0, y: fraction }])
   }
