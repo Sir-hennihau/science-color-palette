@@ -2,11 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import { generatePalette } from '../palette.ts'
 import { inGamut } from '../color/gamut.ts'
+import { oklchToRgb, quantize, rgb8ToHex } from '../color/space.ts'
+import { solveStep } from '../solve.ts'
 import { apcaLc } from '../contrast/apca.ts'
 import { wcagContrastHex } from '../contrast/wcag.ts'
 import { EngineError, type Palette } from '../types.ts'
 
 const BLURPLE = '#635bff'
+
+/** A mid-lightness, colourful hex at the given OKLCH hue. */
+function hexAtHue(hue: number): string {
+  const solved = solveStep({ yTarget: 0.2, hue, fraction: 0.8, gamut: 'srgb' })
+  return rgb8ToHex(quantize(oklchToRgb(solved)))
+}
 
 function rampNamed(palette: Palette, name: string) {
   const ramp = palette.ramps.find((r) => r.name === name)
@@ -261,6 +269,65 @@ describe('seed modes', () => {
 
     expect(rotation).toBeGreaterThan(0)
     expect(rotation).toBeLessThanOrEqual(15.0001)
+  })
+})
+
+describe('semantic colours', () => {
+  /** Hue ranges within which each role still reads as what it means. */
+  const RECOGNISABLE: Record<string, [number, number]> = {
+    danger: [8, 40],
+    warning: [52, 98],
+    success: [128, 172],
+    info: [208, 268],
+  }
+
+  it('stays recognisable whatever the primary hue is', () => {
+    // Harmonising pulls semantic hues toward the primary, and left unchecked a
+    // yellow primary dragged danger to 42 degrees — an orange "error" sitting
+    // close enough to the warning colour to be confused with it.
+    for (let hue = 0; hue < 360; hue += 15) {
+      const palette = generatePalette({ seeds: [{ color: hexAtHue(hue) }] })
+
+      for (const [role, [low, high]] of Object.entries(RECOGNISABLE)) {
+        const ramp = rampNamed(palette, role)
+        expect(ramp.hue, `${role} with primary at ${hue} degrees`).toBeGreaterThanOrEqual(low)
+        expect(ramp.hue, `${role} with primary at ${hue} degrees`).toBeLessThanOrEqual(high)
+      }
+    }
+  })
+
+  it('keeps danger and warning clearly apart', () => {
+    for (let hue = 0; hue < 360; hue += 15) {
+      const palette = generatePalette({ seeds: [{ color: hexAtHue(hue) }] })
+      const separation = Math.abs(
+        rampNamed(palette, 'danger').hue! - rampNamed(palette, 'warning').hue!,
+      )
+      expect(separation, `primary at ${hue} degrees`).toBeGreaterThan(20)
+    }
+  })
+
+  it('still leans them toward the palette', () => {
+    // The point of harmonising is not lost: a blue primary should still pull
+    // the semantic hues measurably, just not out of recognition.
+    const neutral = generatePalette({
+      seeds: [{ color: '#808080' }],
+      semantics: { harmonize: false },
+    })
+    const blue = generatePalette({ seeds: [{ color: '#3b82f6' }] })
+
+    expect(rampNamed(blue, 'success').hue).not.toBeCloseTo(
+      rampNamed(neutral, 'success').hue!,
+      1,
+    )
+  })
+
+  it('can be left unharmonized', () => {
+    const palette = generatePalette({
+      seeds: [{ color: '#3b82f6' }],
+      semantics: { harmonize: false },
+    })
+    expect(rampNamed(palette, 'danger').hue).toBeCloseTo(27, 6)
+    expect(rampNamed(palette, 'success').hue).toBeCloseTo(150, 6)
   })
 })
 

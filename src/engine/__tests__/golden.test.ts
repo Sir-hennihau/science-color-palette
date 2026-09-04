@@ -76,7 +76,7 @@ function summarize(config: PaletteConfig) {
 
 describe('golden palettes', () => {
   it('records the algorithm version the snapshots belong to', () => {
-    expect(ALGORITHM_VERSION).toMatchInlineSnapshot(`1`)
+    expect(ALGORITHM_VERSION).toMatchInlineSnapshot(`2`)
   })
 
   for (const { name, config } of CASES) {

@@ -43,6 +43,23 @@ export const SEMANTIC_HUES: Record<SemanticRole, number> = {
   info: 237,
 }
 
+/**
+ * How far each semantic hue may be rotated toward the primary.
+ *
+ * Harmonising makes semantic colours feel part of the palette, but these hues
+ * are learned conventions rather than aesthetic choices, and rotating them far
+ * enough breaks the convention. Left at a flat 15 degrees, a yellow primary
+ * pulls danger from red to orange — an error colour that reads as a warning,
+ * sitting close enough to the actual warning to be confusable. Red gets the
+ * least room because it is the most load-bearing of the four.
+ */
+export const SEMANTIC_MAX_ROTATION: Record<SemanticRole, number> = {
+  danger: 6,
+  warning: 12,
+  success: 15,
+  info: 15,
+}
+
 export const DEFAULT_NEUTRAL_TINT = 0.5
 
 /** Turn a user config into a fully specified one. */

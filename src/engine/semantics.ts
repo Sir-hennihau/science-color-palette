@@ -7,6 +7,10 @@
  * 15 degrees toward the primary, which is enough to make them feel part of the
  * same palette while leaving them unmistakably red, amber, green and blue.
  *
+ * The rotation each hue is allowed is capped per role, because these are
+ * learned conventions and enough rotation breaks them — see
+ * SEMANTIC_MAX_ROTATION.
+ *
  * They ride the same lightness ladder as everything else, so a danger 600 has
  * exactly the contrast a primary 600 does. One consequence is worth stating
  * plainly rather than hiding: a contrast-safe dark amber is brown. That is not
@@ -18,6 +22,7 @@ import { hueDistance } from './color/space.ts'
 import { chromaCeilingCurve, chromaCurve } from './curves/chroma.ts'
 import { hueCurve } from './curves/hue.ts'
 import { generateRamp, type RampSpec } from './ramp.ts'
+import { SEMANTIC_MAX_ROTATION } from './config.ts'
 import { blendTowardHue } from './seeds.ts'
 import type { EngineWarning, Ramp, ResolvedConfig, SemanticRole } from './types.ts'
 
@@ -44,7 +49,7 @@ function buildSemanticRamp(
   const anchor = resolved.semantics.hues[role]
   const hue =
     resolved.semantics.harmonize && primaryHue !== null
-      ? blendTowardHue(anchor, primaryHue)
+      ? blendTowardHue(anchor, primaryHue, SEMANTIC_MAX_ROTATION[role])
       : anchor
 
   const warnings: EngineWarning[] = []

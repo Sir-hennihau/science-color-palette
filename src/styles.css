@@ -1,0 +1,151 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The chrome is deliberately achromatic.
+ *
+ * This tool's whole job is to show colours the user is judging, and a tinted
+ * interface biases that judgement — which is why colour work is done against
+ * neutral grey surrounds in the first place. So there is no accent hue
+ * anywhere in the shell: focus, selection and active states are carried by
+ * weight, rule and inversion instead. The palette is the only colour on screen.
+ */
+:root {
+  --app-bg: #ffffff;
+  --app-surface: #f6f6f7;
+  --app-sunken: #ececee;
+  --app-line: #e3e3e5;
+  --app-line-strong: #c9c9cd;
+  --app-ink: #18181b;
+  --app-ink-muted: #6b6b73;
+  --app-ink-faint: #93939b;
+  --app-inverse-bg: #18181b;
+  --app-inverse-ink: #fafafa;
+
+  /* Only for pass/fail marks, and never the sole signal — every badge also
+     carries an icon and a word. Muted enough not to read as palette colour. */
+  --app-pass: #1d6f42;
+  --app-fail: #a12b2b;
+  --app-warn: #8a5a12;
+
+  color-scheme: light;
+}
+
+.dark {
+  --app-bg: #121212;
+  --app-surface: #1c1c1c;
+  --app-sunken: #262626;
+  --app-line: #303030;
+  --app-line-strong: #464646;
+  --app-ink: #ededed;
+  --app-ink-muted: #a0a0a0;
+  --app-ink-faint: #767676;
+  --app-inverse-bg: #ededed;
+  --app-inverse-ink: #121212;
+
+  --app-pass: #6bcf97;
+  --app-fail: #f08a8a;
+  --app-warn: #e0b166;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --color-bg: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-sunken: var(--app-sunken);
+  --color-line: var(--app-line);
+  --color-line-strong: var(--app-line-strong);
+  --color-ink: var(--app-ink);
+  --color-ink-muted: var(--app-ink-muted);
+  --color-ink-faint: var(--app-ink-faint);
+  --color-inverse-bg: var(--app-inverse-bg);
+  --color-inverse-ink: var(--app-inverse-ink);
+  --color-pass: var(--app-pass);
+  --color-fail: var(--app-fail);
+  --color-warn: var(--app-warn);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--app-bg);
+    color: var(--app-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Figures line up in columns wherever they are compared. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--app-ink);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Range inputs, restyled to read as instrument controls rather than OS widgets. */
+@layer components {
+  input[type='range'] {
+    appearance: none;
+    width: 100%;
+    height: 1.5rem;
+    background: transparent;
+    cursor: ew-resize;
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--app-line-strong);
+  }
+
+  input[type='range']::-moz-range-track {
+    height: 2px;
+    background: var(--app-line-strong);
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    appearance: none;
+    width: 4px;
+    height: 1rem;
+    margin-top: -7px;
+    background: var(--app-ink);
+    border: 0;
+    border-radius: 1px;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    width: 4px;
+    height: 1rem;
+    background: var(--app-ink);
+    border: 0;
+    border-radius: 1px;
+  }
+}

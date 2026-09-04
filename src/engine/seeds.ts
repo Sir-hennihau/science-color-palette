@@ -44,15 +44,20 @@ import {
 export const MAX_BLEND_ROTATION = 15
 
 /**
- * Rotate `hue` toward `target`, by half the gap but never more than 15 degrees.
+ * Rotate `hue` toward `target`, by half the gap but never more than `limit`.
  *
  * Borrowed from Material's colour blending: enough to make an unrelated colour
  * feel like it belongs to the palette, not enough to stop it being the colour
- * it was.
+ * it was. Semantic roles pass a tighter limit, since a red that rotates far
+ * enough stops reading as an error.
  */
-export function blendTowardHue(hue: number, target: number): number {
+export function blendTowardHue(
+  hue: number,
+  target: number,
+  limit: number = MAX_BLEND_ROTATION,
+): number {
   const delta = hueDelta(hue, target)
-  const rotation = Math.min(MAX_BLEND_ROTATION, Math.abs(delta) / 2)
+  const rotation = Math.min(limit, Math.abs(delta) / 2)
   return normalizeHue(hue + Math.sign(delta) * rotation)
 }
 

@@ -15,7 +15,14 @@
 
 export { generatePalette } from './palette.ts'
 export { generateRamp, type RampSpec, type SeedInsert } from './ramp.ts'
-export { resolveConfig, parseConfig, serializeConfig, SEMANTIC_HUES, MAX_SEEDS } from './config.ts'
+export {
+  resolveConfig,
+  parseConfig,
+  serializeConfig,
+  SEMANTIC_HUES,
+  SEMANTIC_MAX_ROTATION,
+  MAX_SEEDS,
+} from './config.ts'
 
 // Ladder and step counts, for UI controls and labels.
 export {
