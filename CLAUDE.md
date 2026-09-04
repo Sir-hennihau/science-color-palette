@@ -10,9 +10,16 @@ pnpm test                   # engine suite (~200 tests, ~13s)
 pnpm test:watch
 pnpm typecheck              # tsc --noEmit
 pnpm build                  # static output in dist/client
+pnpm build:pages            # the same, plus index.html/404.html/.nojekyll
 pnpm preview --port 4300    # serve the built output
 pnpm generate-routes        # tsr generate, after adding a route file
 ```
+
+`.github/workflows/deploy.yml` publishes `dist/client` to GitHub Pages on
+every push to `master`. It is a project page served from `/<repo>/`, so the
+workflow sets `BASE_PATH`; Vite's `base` and the router's `basepath` both
+follow from it, and `build:pages` adds the entry points a static host needs
+(the SPA build itself only writes `_shell.html`).
 
 No linter is configured. `tsc` is the only static gate, and it is strict
 (`noUnusedLocals`, `noUnusedParameters`).
