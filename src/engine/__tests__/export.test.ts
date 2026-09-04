@@ -31,7 +31,7 @@ describe('CSS export', () => {
 
     const beforeSupports = css.slice(0, css.indexOf('@supports'))
     expect(beforeSupports).not.toContain('oklch(')
-    expect(beforeSupports).toMatch(/--color-primary-600: #[0-9a-f]{6};/)
+    expect(beforeSupports).toMatch(/--color-[a-z-]+-600: #[0-9a-f]{6};/)
   })
 
   it('emits a single format on request', () => {
@@ -43,7 +43,7 @@ describe('CSS export', () => {
   it('honours the selector and prefix', () => {
     const css = exportCss(palette, { selector: '.theme-dark', prefix: 'brand' })
     expect(css).toContain('.theme-dark {')
-    expect(css).toContain('--brand-primary-600:')
+    expect(css).toContain(`--brand-${palette.ramps[0].name}-600:`)
   })
 
   it('states the step-distance guarantees up front', () => {
@@ -99,14 +99,14 @@ describe('Tailwind export', () => {
   it('emits a theme block in the colour namespace', () => {
     const css = exportTailwindTheme(palette)
     expect(css).toContain('@theme {')
-    expect(css).toContain('--color-primary-600:')
+    expect(css).toContain(`--color-${palette.ramps[0].name}-600:`)
     expect(css).toContain('oklch(')
   })
 
   it('can emit hex instead', () => {
     const css = exportTailwindTheme(palette, { mode: 'hex' })
     expect(css).not.toContain('oklch(')
-    expect(css).toMatch(/--color-primary-600: #[0-9a-f]{6};/)
+    expect(css).toMatch(/--color-[a-z-]+-600: #[0-9a-f]{6};/)
   })
 })
 
@@ -120,24 +120,27 @@ describe('JSON export', () => {
       string,
       Record<string, string>
     >
-    expect(Object.keys(compact)).toContain('primary')
-    expect(compact.primary['600']).toMatch(/^#[0-9a-f]{6}$/)
-    expect(Object.keys(compact.primary)).toHaveLength(11)
+    const first = Object.keys(compact)[0]
+    expect(compact[first]['600']).toMatch(/^#[0-9a-f]{6}$/)
+    expect(Object.keys(compact[first])).toHaveLength(11)
+    expect(Object.keys(compact)).toContain('neutral')
   })
 })
 
 describe('design token export', () => {
   it('nests tokens by ramp and shade', () => {
     const tokens = exportDtcg(palette) as any
-    expect(tokens.color.primary.$type).toBe('color')
-    expect(tokens.color.primary['600'].$value.hex).toMatch(/^#[0-9a-f]{6}$/)
-    expect(tokens.color.primary['600'].$value.colorSpace).toBe('srgb')
-    expect(tokens.color.primary['600'].$value.components).toHaveLength(3)
+    const first = palette.ramps[0].name
+    expect(tokens.color[first].$type).toBe('color')
+    expect(tokens.color[first]['600'].$value.hex).toMatch(/^#[0-9a-f]{6}$/)
+    expect(tokens.color[first]['600'].$value.colorSpace).toBe('srgb')
+    expect(tokens.color[first]['600'].$value.components).toHaveLength(3)
   })
 
   it('carries the contrast measurements alongside each colour', () => {
     const tokens = exportDtcg(palette) as any
-    const ext = tokens.color.info['600'].$extensions['dev.sciencecolorpalette']
+    const family = Object.keys(tokens.color)[1]
+    const ext = tokens.color[family]['600'].$extensions['dev.sciencecolorpalette']
 
     expect(ext.oklch).toHaveLength(3)
     expect(ext.wcag.onWhite).toBeGreaterThan(4.5)
@@ -148,13 +151,14 @@ describe('design token export', () => {
 
   it('can emit the legacy hex string form', () => {
     const tokens = exportDtcg(palette, { legacyHexValue: true }) as any
-    expect(tokens.color.primary['600'].$value).toMatch(/^#[0-9a-f]{6}$/)
+    expect(tokens.color[palette.ramps[0].name]['600'].$value).toMatch(/^#[0-9a-f]{6}$/)
   })
 
   it('explains a ramp that broke its contrast promise', () => {
     const grey = generatePalette({ seeds: [{ color: '#808080', mode: 'exact' }] })
     const tokens = exportDtcg(grey) as any
-    expect(tokens.color.primary.$description).toMatch(/below the usual contrast/)
+    const seeded = grey.ramps.find((r) => r.seed)!
+    expect(tokens.color[seeded.name].$description).toMatch(/below the usual contrast/)
   })
 
   it('is serialisable', () => {
@@ -187,12 +191,10 @@ describe('token naming', () => {
   it('makes safe identifiers from awkward ramp names', () => {
     const named = generatePalette({
       seeds: [{ color: '#635bff', name: 'Brand Primary!' }],
-      harmony: { include: ['split-complementary'] },
     })
     const css = exportCss(named)
 
     expect(css).toContain('--color-brand-primary-600:')
-    expect(css).toMatch(/--color-split-complementary-[12]-600:/)
     // No stray characters that would break a declaration.
     for (const name of [...css.matchAll(/--([a-z0-9-]+):/g)].map((m) => m[1])) {
       expect(name).toMatch(/^[a-z0-9-]+$/)

@@ -13,12 +13,13 @@
 
 import { z } from 'zod'
 import {
+  MAX_FAMILIES,
   MAX_HUE_DRIFT,
   MAX_SEEDS,
   MAX_STEPS,
+  MIN_FAMILIES,
   MIN_STEPS,
   type ChromaPreset,
-  type HarmonyKind,
   type PaletteConfig,
   type SeedMode,
 } from '../engine/index.ts'
@@ -28,18 +29,6 @@ const PACKED_SEED = /^[0-9a-f]{6}\.(x|h)$/
 
 export const DEFAULT_SEED = '635bff.h'
 
-export const HARMONY_CHOICES = [
-  'none',
-  'auto',
-  'complementary',
-  'analogous',
-  'triadic',
-  'split-complementary',
-  'tetradic',
-] as const
-
-export type HarmonyChoice = (typeof HARMONY_CHOICES)[number]
-
 export const paletteSearchSchema = z.object({
   seeds: z
     .array(z.string().regex(PACKED_SEED))
@@ -47,24 +36,28 @@ export const paletteSearchSchema = z.object({
     .max(MAX_SEEDS)
     .default([DEFAULT_SEED])
     .catch([DEFAULT_SEED]),
+  families: z
+    .number()
+    .int()
+    .min(MIN_FAMILIES)
+    .max(MAX_FAMILIES)
+    .default(10)
+    .catch(10),
   steps: z.number().int().min(MIN_STEPS).max(MAX_STEPS).default(11).catch(11),
   chroma: z.enum(['vivid', 'natural', 'muted']).default('natural').catch('natural'),
-  harmony: z.enum(HARMONY_CHOICES).default('none').catch('none'),
   drift: z.number().min(-MAX_HUE_DRIFT).max(MAX_HUE_DRIFT).default(0).catch(0),
   tint: z.number().min(0).max(1).default(0.5).catch(0.5),
-  semantics: z.boolean().default(true).catch(true),
 })
 
 export type PaletteSearch = z.infer<typeof paletteSearchSchema>
 
 export const SEARCH_DEFAULTS: PaletteSearch = {
   seeds: [DEFAULT_SEED],
+  families: 10,
   steps: 11,
   chroma: 'natural',
-  harmony: 'none',
   drift: 0,
   tint: 0.5,
-  semantics: true,
 }
 
 export interface UnpackedSeed {
@@ -92,17 +85,10 @@ export function toEngineConfig(search: PaletteSearch): PaletteConfig {
       color: seed.hex,
       mode: seed.mode,
     })),
+    spectrum: { families: search.families },
     ladder: { steps: search.steps },
     chroma: { preset: search.chroma as ChromaPreset },
     hueDrift: search.drift,
     neutrals: { enabled: true, tintStrength: search.tint },
-    semantics: { enabled: search.semantics, harmonize: true },
-    harmony: harmonyConfig(search.harmony),
   }
-}
-
-function harmonyConfig(choice: HarmonyChoice): PaletteConfig['harmony'] {
-  if (choice === 'none') return { auto: false, include: [] }
-  if (choice === 'auto') return { auto: true, include: [] }
-  return { auto: false, include: [choice as HarmonyKind] }
 }

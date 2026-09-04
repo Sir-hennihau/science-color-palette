@@ -39,6 +39,37 @@ const PANELS: Array<{ name: PanelName; label: string }> = [
   { name: 'export', label: 'Export' },
 ]
 
+/** Which family sits nearest each conventional role — advice, not assignment. */
+function RoleHints() {
+  const { palette } = usePaletteSession()
+  if (palette.roleHints.length === 0) return null
+
+  return (
+    <section className="mt-8 border-t border-line pt-4">
+      <h2 className="text-[13px] font-medium">If you need conventional roles</h2>
+      <p className="mt-1 max-w-[70ch] text-[12.5px] text-ink-muted">
+        Nothing here is reserved for a job — these are just the families closest to the hues
+        people already read as an error, a warning, a success and a note.
+      </p>
+      <ul className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
+        {palette.roleHints.map((hint) => (
+          <li key={hint.role} className="text-[12.5px]">
+            <span className="text-ink-muted">{hint.role}</span>{' '}
+            <span className="font-medium">{hint.family}</span>
+            {Math.abs(hint.offset) >= 12 && (
+              <span className="tabular text-[11px] text-ink-faint">
+                {' '}
+                {hint.offset > 0 ? '+' : ''}
+                {hint.offset}°
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function Tool() {
   const { error, palette } = usePaletteSession()
   const [panel, setPanel] = useState<PanelName>('contrast')
@@ -67,19 +98,17 @@ function Tool() {
     <div className="min-h-dvh" data-ready={isReady ? 'true' : undefined}>
       <Header onCopied={announce} />
 
-      <div className="mx-auto flex max-w-[1500px] flex-col lg:flex-row">
-        <aside className="order-2 shrink-0 border-t border-line lg:order-1 lg:w-[19rem] lg:border-r lg:border-t-0">
-          <Controls />
-        </aside>
+      <Controls />
 
-        <main className="order-1 min-w-0 flex-1 px-4 py-6 sm:px-5 lg:order-2">
+      <div className="mx-auto flex max-w-[1600px] flex-col lg:flex-row">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-5">
           {error && (
             <p role="alert" className="mb-5 border border-fail px-3 py-2 text-[12.5px] text-fail">
               {error}
             </p>
           )}
 
-          <PaletteBoard />
+          <PaletteBoard onCopied={announce} />
 
           {advice.length > 0 && (
             <section className="mt-8 border-t border-line pt-4">
@@ -93,6 +122,8 @@ function Tool() {
               </ul>
             </section>
           )}
+
+          <RoleHints />
 
           <section className="mt-9">
             <div className="flex flex-wrap gap-px border-b border-line">
@@ -124,7 +155,7 @@ function Tool() {
           <Footnote />
         </main>
 
-        <aside className="order-3 shrink-0 border-t border-line lg:w-[18.5rem] lg:border-l lg:border-t-0">
+        <aside className="shrink-0 border-t border-line lg:w-[18.5rem] lg:border-l lg:border-t-0">
           <div className="lg:sticky lg:top-0">
             <SwatchInspector onCopied={announce} />
           </div>
@@ -149,8 +180,8 @@ function Header({ onCopied }: { onCopied: (message: string) => void }) {
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
       <div className="flex items-baseline gap-3">
         <h1 className="text-[14.5px] font-semibold tracking-tight">Science Color Palette</h1>
-        <p className="hidden text-[12px] text-ink-muted sm:block">
-          Complete palettes from one or two colours, built on what the eye actually sees
+        <p className="hidden text-[12px] text-ink-muted md:block">
+          A full colour palette from one or two colours, built on what the eye actually sees
         </p>
       </div>
 

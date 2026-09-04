@@ -86,6 +86,7 @@ export function generateSeedRamp(
   seed: ResolvedSeed,
   resolved: ResolvedConfig,
   primaryHue: number | null,
+  name: string,
 ): Ramp {
   const warnings: EngineWarning[] = []
 
@@ -103,8 +104,8 @@ export function generateSeedRamp(
   const slot = resolveSlot(seed, resolved, warnings)
 
   return seed.mode === 'exact'
-    ? buildExactRamp(seed, resolved, hue, slot, warnings)
-    : buildHarmonizedRamp(seed, resolved, hue, slot, warnings)
+    ? buildExactRamp(seed, resolved, hue, slot, name, warnings)
+    : buildHarmonizedRamp(seed, resolved, hue, slot, name, warnings)
 }
 
 function seedHue(seed: ResolvedSeed, primaryHue: number | null): number | null {
@@ -142,7 +143,7 @@ function resolveSlot(
     warnings.push({
       code: 'SEED_AT_RAMP_END',
       message:
-        `${seed.name} is ${index === 0 ? 'very light' : 'very dark'}, so it lands on shade ` +
+        `${seed.hex} is ${index === 0 ? 'very light' : 'very dark'}, so it lands on shade ` +
         `${ladder.labels[index]} and the ramp extends mostly in one direction. ` +
         'A mid-lightness seed gives a fuller range.',
       context: { label: ladder.labels[index] },
@@ -157,11 +158,12 @@ function buildHarmonizedRamp(
   resolved: ResolvedConfig,
   hue: number | null,
   slot: number,
+  name: string,
   warnings: EngineWarning[],
 ): Ramp {
   const spec: RampSpec = {
-    role: seed.role,
-    name: seed.name,
+    role: `family-${name}`,
+    name,
     hue,
     ladder: resolved.ladder,
     fraction: chromaCurve(resolved.chromaPoints),
@@ -186,13 +188,14 @@ function buildHarmonizedRamp(
     },
     report: {
       ...ramp.report,
-      warnings: [...ramp.report.warnings, ...harmonizeNotes(seed, snapped.label, delta)],
+      warnings: [...ramp.report.warnings, ...harmonizeNotes(seed, name, snapped.label, delta)],
     },
   }
 }
 
 function harmonizeNotes(
   seed: ResolvedSeed,
+  name: string,
   slotLabel: number,
   delta: SeedDelta,
 ): EngineWarning[] {
@@ -202,7 +205,7 @@ function harmonizeNotes(
     {
       code: 'SEED_HARMONIZED',
       message:
-        `${seed.name} ${slotLabel} is a ${delta.magnitude} step from ${seed.hex} — the ` +
+        `${name} ${slotLabel} is a ${delta.magnitude} step from ${seed.hex} — the ` +
         'ramp keeps its lightness and colourfulness consistent with the rest of the ' +
         'palette. Switch this seed to Exact to keep your colour unchanged.',
       context: {
@@ -219,6 +222,7 @@ function buildExactRamp(
   resolved: ResolvedConfig,
   hue: number | null,
   slot: number,
+  name: string,
   warnings: EngineWarning[],
 ): Ramp {
   const baseCurve = chromaCurve(resolved.chromaPoints)
@@ -227,8 +231,8 @@ function buildExactRamp(
   // step. That is what the reported delta is against, so the user can see what
   // holding their colour actually costs.
   const idealSpec: RampSpec = {
-    role: seed.role,
-    name: seed.name,
+    role: `family-${name}`,
+    name,
     hue,
     ladder: resolved.ladder,
     fraction: baseCurve,
@@ -253,8 +257,8 @@ function buildExactRamp(
       : warpChromaCurve(baseCurve, t, chromaFractionOf(seed.oklch, resolved.gamut))
 
   const spec: RampSpec = {
-    role: seed.role,
-    name: seed.name,
+    role: `family-${name}`,
+    name,
     hue,
     ladder,
     fraction,

@@ -1,4 +1,5 @@
 import { usePaletteSession } from '../lib/palette-session.tsx'
+import { copyText } from '../lib/browser.ts'
 import type { Ramp, Swatch } from '../engine/index.ts'
 
 /**
@@ -10,27 +11,35 @@ import type { Ramp, Swatch } from '../engine/index.ts'
  * ring means the shade is the user's own colour, kept exactly, and a warning
  * mark means the shade falls short of the contrast its position implies.
  */
-export function PaletteBoard() {
+export function PaletteBoard({ onCopied }: { onCopied: (message: string) => void }) {
   const { palette } = usePaletteSession()
 
-  const seedRamps = palette.ramps.filter((r) => r.seed)
-  const accentRamps = palette.ramps.filter((r) => r.role.startsWith('accent-'))
-  const neutralRamps = palette.ramps.filter((r) => r.role === 'neutral')
-  const semanticRamps = palette.ramps.filter((r) =>
-    ['success', 'warning', 'danger', 'info'].includes(r.role),
-  )
+  // The spectrum reads as one progression, so it is presented as one list in
+  // the order the engine walked the wheel: the colours that were typed first,
+  // then round the circle from there. Greys sit apart because they are the
+  // palette's foundation rather than a point on that circle.
+  const families = palette.ramps.filter((r) => r.role !== 'neutral')
+  const neutrals = palette.ramps.filter((r) => r.role === 'neutral')
 
   return (
-    <div className="flex flex-col gap-9">
-      <RampGroup ramps={seedRamps} />
-      {accentRamps.length > 0 && <RampGroup ramps={accentRamps} heading="Harmony" />}
-      {neutralRamps.length > 0 && <RampGroup ramps={neutralRamps} heading="Neutrals" />}
-      {semanticRamps.length > 0 && <RampGroup ramps={semanticRamps} heading="Semantic" />}
+    <div className="flex flex-col gap-8">
+      <RampGroup ramps={families} onCopied={onCopied} />
+      {neutrals.length > 0 && (
+        <RampGroup ramps={neutrals} heading="Greys" onCopied={onCopied} />
+      )}
     </div>
   )
 }
 
-function RampGroup({ ramps, heading }: { ramps: Ramp[]; heading?: string }) {
+function RampGroup({
+  ramps,
+  heading,
+  onCopied,
+}: {
+  ramps: Ramp[]
+  heading?: string
+  onCopied: (message: string) => void
+}) {
   if (ramps.length === 0) return null
 
   return (
@@ -41,18 +50,18 @@ function RampGroup({ ramps, heading }: { ramps: Ramp[]; heading?: string }) {
         </h2>
       )}
       {ramps.map((ramp) => (
-        <RampRow key={ramp.role} ramp={ramp} />
+        <RampRow key={ramp.role} ramp={ramp} onCopied={onCopied} />
       ))}
     </section>
   )
 }
 
-function RampRow({ ramp }: { ramp: Ramp }) {
+function RampRow({ ramp, onCopied }: { ramp: Ramp; onCopied: (message: string) => void }) {
   const { select, selected } = usePaletteSession()
   const broken = ramp.report.brokenGuarantees.length > 0
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" data-ramp={ramp.name}>
       <div className="flex items-baseline gap-2.5 flex-wrap">
         <h3 className="text-[15px] font-medium">{ramp.name}</h3>
 
@@ -60,6 +69,7 @@ function RampRow({ ramp }: { ramp: Ramp }) {
           <span className="tabular text-[11px] text-ink-faint">{ramp.hue.toFixed(0)}°</span>
         )}
 
+        {ramp.seed && <YoursBadge />}
         {ramp.seed && <SeedNote ramp={ramp} />}
 
         {!ramp.report.usesSharedLadder && (
@@ -84,11 +94,24 @@ function RampRow({ ramp }: { ramp: Ramp }) {
             ramp={ramp}
             swatch={swatch}
             isSelected={selected.ramp === ramp.role && selected.index === swatch.index}
-            onSelect={() => select({ ramp: ramp.role, index: swatch.index })}
+            onSelect={async () => {
+              select({ ramp: ramp.role, index: swatch.index })
+              const ok = await copyText(swatch.hex)
+              onCopied(ok ? `Copied ${swatch.hex}` : `Selected ${swatch.hex}`)
+            }}
           />
         ))}
       </div>
     </div>
+  )
+}
+
+/** Marks a family that came from a colour the user supplied. */
+function YoursBadge() {
+  return (
+    <span className="border border-ink px-1 py-px text-[10px] font-medium leading-none">
+      yours
+    </span>
   )
 }
 
@@ -139,7 +162,7 @@ function SwatchButton({
       aria-pressed={isSelected}
       aria-label={`${ramp.name} ${swatch.label}, ${swatch.hex}${
         swatch.isSeed ? ', your colour kept exactly' : ''
-      }${failed ? ', below the usual contrast for this position' : ''}`}
+      }${failed ? ', below the usual contrast for this position' : ''}. Copies on click.`}
       className="group relative flex h-16 flex-col justify-between p-1 text-left transition-transform hover:z-10 hover:scale-[1.04] sm:h-20 sm:p-1.5"
       style={{ backgroundColor: swatch.hex, color: swatch.onHexWcag }}
     >

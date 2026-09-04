@@ -8,6 +8,7 @@ import { wcagContrastHex } from '../contrast/wcag.ts'
 import { exportPalette, EXPORT_FORMATS } from '../export/index.ts'
 import { MAX_HUE_DRIFT } from '../curves/hue.ts'
 import { MAX_STEPS, MIN_STEPS } from '../ladder.ts'
+import { MAX_FAMILIES, MIN_FAMILIES } from '../spectrum.ts'
 import type { ChromaPreset, Palette, PaletteConfig, SeedMode } from '../types.ts'
 
 /**
@@ -32,11 +33,13 @@ const configArb: fc.Arbitrary<PaletteConfig> = fc.record({
     }),
     { minLength: 1, maxLength: 3 },
   ),
+  spectrum: fc.record({
+    families: fc.integer({ min: MIN_FAMILIES, max: MAX_FAMILIES }),
+  }),
   ladder: fc.record({ steps: fc.integer({ min: MIN_STEPS, max: MAX_STEPS }) }),
   chroma: fc.record({ preset: fc.constantFrom<ChromaPreset>('vivid', 'natural', 'muted') }),
   hueDrift: fc.integer({ min: -MAX_HUE_DRIFT, max: MAX_HUE_DRIFT }),
   neutrals: fc.record({ tintStrength: fc.float({ min: 0, max: 1, noNaN: true }) }),
-  harmony: fc.record({ auto: fc.boolean() }),
 })
 
 /**
@@ -138,21 +141,44 @@ describe('invariants for any palette', () => {
   check('an exact seed survives verbatim', (config) => {
     const palette = paletteFor(config)
 
-    for (const [index, seed] of config.seeds.entries()) {
+    for (const seed of config.seeds) {
       if (seed.mode !== 'exact') continue
-      const ramp = palette.ramps[index]
+      const hex = seed.color.toLowerCase()
+      // Two seeds of nearly the same hue collapse into one family, so a seed
+      // may legitimately have no family of its own.
+      const ramp = palette.ramps.find((r) => r.seed?.input === hex)
+      if (!ramp) continue
       const seeded = ramp.swatches.filter((s) => s.isSeed)
       expect(seeded).toHaveLength(1)
-      expect(seeded[0].hex).toBe(seed.color.toLowerCase())
+      expect(seeded[0].hex).toBe(hex)
     }
   })
 
   check('a harmonized ramp never pins a swatch', (config) => {
     const palette = paletteFor(config)
 
-    for (const [index, seed] of config.seeds.entries()) {
-      if (seed.mode !== 'harmonize') continue
-      expect(palette.ramps[index].swatches.some((s) => s.isSeed)).toBe(false)
+    for (const ramp of palette.ramps) {
+      if (ramp.seed?.mode !== 'harmonize') continue
+      expect(ramp.swatches.some((s) => s.isSeed)).toBe(false)
+    }
+  })
+
+  check('family names are unique', (config) => {
+    const names = paletteFor(config).ramps.map((r) => r.name)
+    expect(new Set(names).size).toBe(names.length)
+  })
+
+  check('no family is named after a job', (config) => {
+    for (const name of paletteFor(config).ramps.map((r) => r.name)) {
+      expect(['danger', 'warning', 'success', 'info', 'primary']).not.toContain(name)
+    }
+  })
+
+  check('every role hint names a family that exists', (config) => {
+    const palette = paletteFor(config)
+    const names = palette.ramps.map((r) => r.name)
+    for (const hint of palette.roleHints) {
+      expect(names).toContain(hint.family)
     }
   })
 

@@ -3,163 +3,163 @@ import { HexColorPicker } from 'react-colorful'
 
 import { usePaletteSession } from '../lib/palette-session.tsx'
 import { pickScreenColor, supportsEyeDropper } from '../lib/browser.ts'
-import { HARMONY_CHOICES, type HarmonyChoice } from '../lib/search-schema.ts'
-import { MAX_HUE_DRIFT, MAX_SEEDS, MAX_STEPS, MIN_STEPS, parseColor } from '../engine/index.ts'
+import {
+  MAX_FAMILIES,
+  MAX_HUE_DRIFT,
+  MAX_SEEDS,
+  MAX_STEPS,
+  MIN_FAMILIES,
+  MIN_STEPS,
+  parseColor,
+} from '../engine/index.ts'
 
+/**
+ * Every input, in one band across the top.
+ *
+ * The colours come first and get the most room, because they are the only thing
+ * a person has to supply; the rest are adjustments to what the colours already
+ * produced. Keeping them all above the palette means nothing that shapes the
+ * result is hidden below the fold or off to one side.
+ */
 export function Controls() {
   const { config, seeds, commit, preview, addSeed } = usePaletteSession()
 
   return (
-    <div className="flex flex-col divide-y divide-line">
-      <Section title="Your colours">
-        <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-y-4 border-b border-line px-4 py-3.5 lg:flex-row lg:items-start lg:gap-x-6 lg:px-5">
+      <Group label="Your colours" className="lg:w-[19rem] lg:shrink-0">
+        <div className="flex flex-col gap-1.5">
           {seeds.map((seed, index) => (
             <SeedControl key={index} index={index} hex={seed.hex} mode={seed.mode} />
           ))}
+          {seeds.length < MAX_SEEDS && (
+            <button
+              type="button"
+              onClick={addSeed}
+              className="border border-dashed border-line-strong py-1 text-[11.5px] text-ink-muted hover:border-ink hover:text-ink"
+            >
+              Add a colour
+            </button>
+          )}
         </div>
+      </Group>
 
-        {seeds.length < MAX_SEEDS && (
-          <button
-            type="button"
-            onClick={addSeed}
-            className="mt-3 w-full border border-dashed border-line-strong py-1.5 text-[12px] text-ink-muted hover:border-ink hover:text-ink"
-          >
-            Add a colour
-          </button>
-        )}
-      </Section>
-
-      <Section title="Shades" value={String(config.steps)}>
-        <input
-          type="range"
-          min={MIN_STEPS}
-          max={MAX_STEPS}
-          step={1}
-          value={config.steps}
-          aria-label="Number of shades per ramp"
-          aria-valuetext={`${config.steps} shades`}
-          onChange={(e) => preview({ steps: Number(e.target.value) })}
-          onPointerUp={() => commit()}
-          onKeyUp={() => commit()}
-        />
-        <p className="text-[11.5px] text-ink-muted">
-          More shades subdivide the same lightness range, so the colours you already have stay
-          put.
-        </p>
-      </Section>
-
-      <Section title="Colourfulness">
-        <Segmented
-          options={[
-            { value: 'muted', label: 'Muted' },
-            { value: 'natural', label: 'Natural' },
-            { value: 'vivid', label: 'Vivid' },
-          ]}
-          value={config.chroma}
-          onChange={(chroma) => commit({ chroma: chroma as typeof config.chroma })}
-          label="Colourfulness"
-        />
-        <p className="text-[11.5px] text-ink-muted">
-          A share of the colour each hue can actually reach at a given lightness, so every hue
-          stays within what a screen can show.
-        </p>
-      </Section>
-
-      <Section title="Hue drift" value={`${config.drift > 0 ? '+' : ''}${config.drift}°`}>
-        <input
-          type="range"
-          min={-MAX_HUE_DRIFT}
-          max={MAX_HUE_DRIFT}
-          step={1}
-          value={config.drift}
-          aria-label="Hue drift across the ramp, in degrees"
-          aria-valuetext={`${config.drift} degrees`}
-          onChange={(e) => preview({ drift: Number(e.target.value) })}
-          onPointerUp={() => commit()}
-          onKeyUp={() => commit()}
-        />
-        <p className="text-[11.5px] text-ink-muted">
-          Rotates hue from the lightest shade to the darkest. Hand-tuned palettes use this — it is
-          what turns a dark yellow brown instead of olive.
-        </p>
-      </Section>
-
-      <Section title="Harmony">
-        <select
-          value={config.harmony}
-          aria-label="Harmony scheme"
-          onChange={(e) => commit({ harmony: e.target.value as HarmonyChoice })}
-          className="w-full border border-line bg-bg px-2 py-1.5 text-[12.5px]"
-        >
-          {HARMONY_CHOICES.map((choice) => (
-            <option key={choice} value={choice}>
-              {harmonyLabel(choice)}
-            </option>
-          ))}
-        </select>
-        <p className="text-[11.5px] text-ink-muted">
-          Accent hues are solved from scratch on the shared lightness scale, never copied across —
-          the opposite of a vivid dark blue does not exist as a vivid dark yellow.
-        </p>
-      </Section>
-
-      <Section title="Neutral tint" value={config.tint === 0 ? 'none' : `${Math.round(config.tint * 100)}%`}>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={config.tint}
-          aria-label="How far neutrals lean toward your primary hue"
-          aria-valuetext={config.tint === 0 ? 'pure grey' : `${Math.round(config.tint * 100)} percent`}
-          onChange={(e) => preview({ tint: Number(e.target.value) })}
-          onPointerUp={() => commit()}
-          onKeyUp={() => commit()}
-        />
-        <p className="text-[11.5px] text-ink-muted">
-          Greys lean very slightly toward your primary so they feel related to it.
-        </p>
-      </Section>
-
-      <Section title="Semantic colours">
-        <label className="flex items-center gap-2 text-[12.5px]">
+      <div className="flex flex-1 flex-wrap gap-x-6 gap-y-4">
+        <Group label="Families" value={String(config.families)} className="min-w-[8.5rem] flex-1">
           <input
-            type="checkbox"
-            checked={config.semantics}
-            onChange={(e) => commit({ semantics: e.target.checked })}
-            className="h-3.5 w-3.5 accent-ink"
+            type="range"
+            min={MIN_FAMILIES}
+            max={MAX_FAMILIES}
+            step={1}
+            value={config.families}
+            aria-label="Number of colour families"
+            aria-valuetext={`${config.families} families`}
+            onChange={(e) => preview({ families: Number(e.target.value) })}
+            onPointerUp={() => commit()}
+            onKeyUp={() => commit()}
           />
-          Include success, warning, danger and info
-        </label>
-      </Section>
+          <Hint>Colours spread around the wheel from yours.</Hint>
+        </Group>
+
+        <Group label="Shades" value={String(config.steps)} className="min-w-[8.5rem] flex-1">
+          <input
+            type="range"
+            min={MIN_STEPS}
+            max={MAX_STEPS}
+            step={1}
+            value={config.steps}
+            aria-label="Number of shades per family"
+            aria-valuetext={`${config.steps} shades`}
+            onChange={(e) => preview({ steps: Number(e.target.value) })}
+            onPointerUp={() => commit()}
+            onKeyUp={() => commit()}
+          />
+          <Hint>Steps per family, on one shared lightness scale.</Hint>
+        </Group>
+
+        <Group label="Colourfulness" className="min-w-[11rem] flex-1">
+          <Segmented
+            label="Colourfulness"
+            value={config.chroma}
+            onChange={(chroma) => commit({ chroma: chroma as typeof config.chroma })}
+            options={[
+              { value: 'muted', label: 'Muted' },
+              { value: 'natural', label: 'Natural' },
+              { value: 'vivid', label: 'Vivid' },
+            ]}
+          />
+          <Hint>A share of what each hue can actually reach.</Hint>
+        </Group>
+
+        <Group
+          label="Hue drift"
+          value={`${config.drift > 0 ? '+' : ''}${config.drift}°`}
+          className="min-w-[8.5rem] flex-1"
+        >
+          <input
+            type="range"
+            min={-MAX_HUE_DRIFT}
+            max={MAX_HUE_DRIFT}
+            step={1}
+            value={config.drift}
+            aria-label="Hue drift across each ramp, in degrees"
+            aria-valuetext={`${config.drift} degrees`}
+            onChange={(e) => preview({ drift: Number(e.target.value) })}
+            onPointerUp={() => commit()}
+            onKeyUp={() => commit()}
+          />
+          <Hint>Turns dark yellows brown rather than olive.</Hint>
+        </Group>
+
+        <Group
+          label="Grey tint"
+          value={config.tint === 0 ? 'none' : `${Math.round(config.tint * 100)}%`}
+          className="min-w-[8.5rem] flex-1"
+        >
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={config.tint}
+            aria-label="How far greys lean toward your first colour"
+            aria-valuetext={
+              config.tint === 0 ? 'pure grey' : `${Math.round(config.tint * 100)} percent`
+            }
+            onChange={(e) => preview({ tint: Number(e.target.value) })}
+            onPointerUp={() => commit()}
+            onKeyUp={() => commit()}
+          />
+          <Hint>How far greys lean toward your first colour.</Hint>
+        </Group>
+      </div>
     </div>
   )
 }
 
-function harmonyLabel(choice: HarmonyChoice): string {
-  if (choice === 'none') return 'None'
-  if (choice === 'auto') return 'Suggested for my colours'
-  return choice.charAt(0).toUpperCase() + choice.slice(1).replace('-', ' ')
-}
-
-function Section({
-  title,
+function Group({
+  label,
   value,
+  className = '',
   children,
 }: {
-  title: string
+  label: string
   value?: string
+  className?: string
   children: React.ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-2 px-4 py-4">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-[12.5px] font-medium">{title}</h2>
+    <section className={`flex flex-col gap-1.5 ${className}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-[12px] font-medium">{label}</h2>
         {value && <span className="tabular text-[11.5px] text-ink-muted">{value}</span>}
       </div>
       {children}
     </section>
   )
+}
+
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="text-[11px] leading-snug text-ink-muted">{children}</p>
 }
 
 function Segmented({
@@ -182,7 +182,7 @@ function Segmented({
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={[
-            'flex-1 py-1.5 text-[12px]',
+            'flex-1 py-1 text-[11.5px]',
             index > 0 ? 'border-l border-line' : '',
             value === option.value
               ? 'bg-inverse-bg text-inverse-ink'
@@ -197,11 +197,11 @@ function Segmented({
 }
 
 /**
- * One seed colour.
+ * One colour.
  *
- * The two modes are the heart of the tool, so the choice is always visible
- * rather than tucked behind a menu, and the consequence of the current choice
- * is stated underneath in plain terms.
+ * The two modes are the heart of the tool, so the choice sits right beside the
+ * value rather than behind a menu, and what it currently costs is stated under
+ * the colour it applies to.
  */
 function SeedControl({
   index,
@@ -242,8 +242,8 @@ function SeedControl({
     }
   }, [isOpen])
 
-  const ramp = palette.ramps[index]
-  const delta = ramp?.seed?.delta
+  const family = palette.ramps.find((r) => r.seed?.input === hex)
+  const delta = family?.seed?.delta
   const parsed = parseColor(text)
 
   const commitText = () => {
@@ -252,14 +252,14 @@ function SeedControl({
   }
 
   return (
-    <div className="flex flex-col gap-2 border border-line p-2.5">
-      <div className="flex items-center gap-2">
+    <div className="relative flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => setIsOpen((open) => !open)}
           aria-expanded={isOpen}
           aria-label={`Choose colour ${index + 1} visually, currently ${hex}`}
-          className="h-7 w-7 shrink-0 border border-line-strong"
+          className="h-6 w-6 shrink-0 border border-line-strong"
           style={{ backgroundColor: hex }}
         />
 
@@ -275,10 +275,30 @@ function SeedControl({
           aria-invalid={!parsed}
           spellCheck={false}
           className={[
-            'tabular min-w-0 flex-1 border bg-bg px-1.5 py-1 text-[12.5px]',
+            'tabular w-[6.5rem] shrink-0 border bg-bg px-1.5 py-0.5 text-[12px]',
             parsed ? 'border-line' : 'border-fail',
           ].join(' ')}
         />
+
+        <div role="group" aria-label={`How to treat colour ${index + 1}`} className="flex border border-line">
+          {(['harmonize', 'exact'] as const).map((option, i) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={mode === option}
+              onClick={() => updateSeed(index, { mode: option })}
+              className={[
+                'px-1.5 py-0.5 text-[11px]',
+                i > 0 ? 'border-l border-line' : '',
+                mode === option
+                  ? 'bg-inverse-bg text-inverse-ink'
+                  : 'text-ink-muted hover:text-ink',
+              ].join(' ')}
+            >
+              {option === 'harmonize' ? 'Adjust' : 'Exact'}
+            </button>
+          ))}
+        </div>
 
         {canPick && (
           <button
@@ -288,9 +308,9 @@ function SeedControl({
               const picked = await pickScreenColor()
               if (picked) updateSeed(index, { hex: picked })
             }}
-            className="shrink-0 border border-line px-1.5 py-1 text-ink-muted hover:border-ink hover:text-ink"
+            className="shrink-0 border border-line px-1 py-0.5 text-ink-muted hover:border-ink hover:text-ink"
           >
-            <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" aria-hidden="true">
+            <svg viewBox="0 0 14 14" className="h-3 w-3" aria-hidden="true">
               <path
                 d="M8.8 1.9l3.3 3.3M10.4 3.5L5.2 8.7l-.8 2.6 2.6-.8 5.2-5.2zM4.4 11.3l-1.7 1.7"
                 fill="none"
@@ -307,17 +327,32 @@ function SeedControl({
             type="button"
             aria-label={`Remove colour ${index + 1}`}
             onClick={() => removeSeed(index)}
-            className="shrink-0 px-1 text-ink-faint hover:text-ink"
+            className="ml-auto shrink-0 px-0.5 text-ink-faint hover:text-ink"
           >
-            <svg viewBox="0 0 12 12" className="h-3 w-3" aria-hidden="true">
-              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.4" />
+            <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.6" />
             </svg>
           </button>
         )}
       </div>
 
+      {mode === 'exact' ? (
+        <p className="text-[10.5px] leading-snug text-ink-muted">
+          Ships unchanged; the ramp bends around it. Contrast promises can slip, and any that do
+          are marked.
+        </p>
+      ) : (
+        <p className="text-[10.5px] leading-snug text-ink-muted">
+          Nudged onto the shared lightness scale so contrast is guaranteed
+          {delta && delta.magnitude !== 'none' ? `, currently a ${delta.magnitude} step` : ''}.
+        </p>
+      )}
+
       {isOpen && (
-        <div ref={popover} className="relative">
+        <div
+          ref={popover}
+          className="absolute left-0 top-8 z-30 w-56 border border-line-strong bg-bg p-2 shadow-lg"
+        >
           {/* react-colorful streams changes on every pointer move and has no
               release callback, so the wrapper commits when the pointer lifts.
               Without this every drag would fill the history stack. */}
@@ -333,36 +368,6 @@ function SeedControl({
           </div>
         </div>
       )}
-
-      <Segmented
-        label={`How to treat colour ${index + 1}`}
-        value={mode}
-        onChange={(next) => updateSeed(index, { mode: next as 'exact' | 'harmonize' })}
-        options={[
-          { value: 'harmonize', label: 'Adjust' },
-          { value: 'exact', label: 'Keep exact' },
-        ]}
-      />
-
-      <p className="text-[11px] leading-snug text-ink-muted">
-        {mode === 'exact' ? (
-          <>
-            Your colour ships unchanged, and the ramp bends around it. Contrast promises can slip;
-            any that do are marked.
-          </>
-        ) : (
-          <>
-            Nudged onto the shared lightness scale so contrast is guaranteed.
-            {delta && delta.magnitude !== 'none' && (
-              <>
-                {' '}
-                Currently a{delta.magnitude === 'subtle' ? '' : ''} {delta.magnitude} step from
-                what you entered.
-              </>
-            )}
-          </>
-        )}
-      </p>
     </div>
   )
 }

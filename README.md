@@ -1,9 +1,14 @@
 # Science Color Palette
 
-Enter one or two colours, get a complete design-system palette: shade ramps with
-a dynamic number of steps, tinted neutrals, harmony accents and semantic
-colours — all built so that a given shade number carries the same contrast in
+Enter one or two colours, get a full palette: a spectrum of named colour
+families walking the hue circle from yours, each with a shade ramp, plus tinted
+greys — all built so that a given shade number carries the same contrast in
 every hue.
+
+Nothing is named after a job. There is no ramp called "danger"; there is a red,
+and what it means is up to you. A palette is more useful as a range than as a
+set of assignments, and it is the shape the palettes people actually build
+design systems on take.
 
 ```bash
 pnpm install
@@ -44,6 +49,37 @@ Colours are solved in OKLCH, whose constant-hue lines hold together far better
 than CIELAB's (where deep blues visibly swing toward purple as they darken).
 Every output is checked against what a screen can actually display, because
 browsers clip out-of-gamut colours rather than mapping them.
+
+**Two rules shape chroma, not one.** Through the middle and dark end it is a
+share of the envelope. Near white that breaks down: just past a hue's cusp the
+envelope collapses so steeply that a share is no restraint at all, so the light
+steps are held by an absolute ceiling instead — set to the *median* chroma the
+reference palettes reach at each step, not the maximum. Using the maximum let
+teal and green run two to three times too colourful in their lightest shades
+while blue, whose envelope is modest up there anyway, came out right. The two
+rules end up splitting the work: blue never touches the ceiling and is shaped
+entirely by its envelope share, while teal and green are held by the ceiling
+through the light half.
+
+## The spectrum
+
+Your colours are fixed anchors on the hue circle. The remaining families are
+shared out among the arcs between them in proportion to how wide each arc is,
+then spaced evenly inside it. So one colour gives an evenly spaced ring starting
+at yours, and two colours 30 degrees apart put most of the spectrum in the wide
+arc — where there is actually room for distinguishable colours — rather than
+crowding the narrow one.
+
+Families are named by the closest free colour name, matched best-first so a
+family sitting squarely on "teal" keeps it. The names are defined by a
+well-known hex rather than an angle, so "blue" means the hue of a colour
+everyone agrees is blue and cannot drift out of step with the conversion code.
+
+The walk starts at your first colour and continues round the wheel, which keeps
+what you typed at the top of your palette and makes the rest read as a
+progression. If you do need conventional roles, the tool notes which family
+sits nearest each of them, and how far off it is — advice rather than
+assignment.
 
 ## The two seed modes
 
@@ -88,6 +124,7 @@ src/
     curves/        monotone interpolation, chroma and hue curves
     ladder.ts      the shared luminance staircase
     solve.ts       luminance target + envelope -> a colour
+    spectrum.ts    laying out and naming the colour families
     seeds.ts       the two seed modes
     export/        CSS, Tailwind v4, JSON, W3C design tokens
     __tests__/
@@ -104,6 +141,13 @@ reproducibility, and keeping our own implementation frees culori to act as an
 independent oracle in the tests rather than being both the implementation and
 its own check.
 
+## Everything you can change is in one band at the top
+
+Colours first and with the most room, because they are the only thing you have
+to supply; the rest — how many families, how many shades, colourfulness, hue
+drift, grey tint — are adjustments to what those colours already produced.
+Nothing that shapes the result is hidden off to one side or below the fold.
+
 ## State lives in the URL
 
 The whole configuration is held in typed search params. A palette is shareable
@@ -117,7 +161,7 @@ gesture is one history entry.
 pnpm test                      # engine: unit, calibration, golden, property
 pnpm typecheck
 pnpm dev &
-node scripts/e2e.mjs           # 27 checks: URL round-trips, drag, export, axe
+node scripts/e2e.mjs           # 34 checks: URL round-trips, drag, export, axe
 node scripts/screenshot.mjs    # captures light, dark, mobile to /tmp/scp-shots
 ```
 
@@ -147,3 +191,8 @@ value per hue automatically needs a model this does not have yet, so it defaults
 to none.
 
 Colour-vision-deficiency simulation, and a per-hue automatic chroma peak.
+
+Warping the spacing so families are equally *distinguishable* rather than
+equally spaced in hue. Even OKLCH spacing is already perceptual, but hue
+discrimination is not quite uniform around the circle, and the reference
+palettes are visibly denser in the blue-green region than in the oranges.

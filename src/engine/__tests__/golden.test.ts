@@ -23,8 +23,16 @@ const CASES: Array<{ name: string; config: PaletteConfig }> = [
   { name: 'mid grey, exact', config: { seeds: [{ color: '#808080', mode: 'exact' }] } },
   { name: 'out of gamut input', config: { seeds: [{ color: 'oklch(0.85 0.35 145)' }] } },
   {
-    name: 'two seeds with auto harmony',
-    config: { seeds: [{ color: '#635bff' }, { color: '#f59e0b' }], harmony: { auto: true } },
+    name: 'two seeds',
+    config: { seeds: [{ color: '#635bff' }, { color: '#f59e0b' }] },
+  },
+  {
+    name: 'three families only',
+    config: { seeds: [{ color: '#14b8a6' }], spectrum: { families: 3 } },
+  },
+  {
+    name: 'sixteen families',
+    config: { seeds: [{ color: '#3b82f6' }], spectrum: { families: 16 } },
   },
   {
     name: 'five steps, muted',
@@ -69,14 +77,14 @@ function summarize(config: PaletteConfig) {
     stepDistanceGuarantees: palette.sharedPairTable.map(
       (e) => `${e.distance}: ${e.minWcag.toFixed(2)}:1, Lc ${Math.round(e.minApcaLc)}`,
     ),
-    suggestions: palette.suggestions.map((s) => `${s.kind} @ ${s.confidence}`),
+    roleHints: palette.roleHints.map((h) => `${h.role}: ${h.family}`),
     warnings: [...new Set(palette.warnings.map((w) => w.code))].sort(),
   }
 }
 
 describe('golden palettes', () => {
   it('records the algorithm version the snapshots belong to', () => {
-    expect(ALGORITHM_VERSION).toMatchInlineSnapshot(`2`)
+    expect(ALGORITHM_VERSION).toMatchInlineSnapshot(`3`)
   })
 
   for (const { name, config } of CASES) {

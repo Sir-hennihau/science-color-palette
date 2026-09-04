@@ -19,7 +19,6 @@ import type { PaletteConfig } from '../types.ts'
 
 const CONFIG: PaletteConfig = {
   seeds: [{ color: '#635bff' }, { color: '#f59e0b' }],
-  harmony: { auto: true },
 }
 
 /** Median milliseconds per call, which shrugs off scheduling noise. */
@@ -59,7 +58,7 @@ describe('generation speed', () => {
         { color: '#8b5cf6' },
       ],
       ladder: { steps: 15 },
-      harmony: { include: ['complementary', 'triadic', 'tetradic'] },
+      spectrum: { families: 16 },
     }
 
     generatePalette(big)

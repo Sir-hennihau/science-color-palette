@@ -25,21 +25,16 @@ export type SeedMode = 'exact' | 'harmonize'
 /** Target display gamut. v1 emits sRGB; the envelope math is already generic. */
 export type GamutId = 'srgb'
 
-export type SeedRole = 'primary' | 'secondary' | 'tertiary' | 'quaternary' | 'quinary'
-
-export type SemanticRole = 'success' | 'warning' | 'danger' | 'info'
-
-export type HarmonyKind =
-  | 'complementary'
-  | 'analogous'
-  | 'triadic'
-  | 'split-complementary'
-  | 'tetradic'
-
 export type ChromaPreset = 'vivid' | 'natural' | 'muted' | 'custom'
 
-/** A ramp's place in the palette. */
-export type RampRole = SeedRole | 'neutral' | SemanticRole | `accent-${string}`
+/**
+ * A ramp's place in the palette.
+ *
+ * Colour families are identified by their colour, not by a job. A palette is a
+ * range the designer assigns, so there is no ramp called "danger" — there is a
+ * red, and what it means is up to whoever uses it.
+ */
+export type RampRole = 'neutral' | `family-${string}`
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -50,13 +45,11 @@ export interface SeedInput {
   color: string
   /** Defaults to `harmonize`. */
   mode?: SeedMode
-  /** Defaults to the role implied by position in the seeds array. */
-  role?: SeedRole
-  /** Token name used in exports. Defaults to the role. */
+  /** Overrides the colour name this seed's family would be given. */
   name?: string
   /** Force the shade label the seed occupies. Defaults to the nearest one. */
   slot?: number
-  /** Rotate this seed's hue slightly toward the primary's. Non-primary only. */
+  /** Rotate this seed's hue slightly toward the first seed's. */
   blendHue?: boolean
 }
 
@@ -102,30 +95,19 @@ export interface NeutralsConfig {
   tintStrength?: number
 }
 
-export interface SemanticsConfig {
-  enabled?: boolean
-  /** Rotate semantic hues slightly toward the primary. Defaults to true. */
-  harmonize?: boolean
-  /** Override the OKLCH hue anchor for any semantic role. */
-  hues?: Partial<Record<SemanticRole, number>>
-}
-
-export interface HarmonyConfig {
-  /** Generate ramps for the best-scoring suggestion. */
-  auto?: boolean
-  /** Generate ramps for these specific schemes. */
-  include?: HarmonyKind[]
+export interface SpectrumConfig {
+  /** How many colour families to generate, 3..16. Defaults to 10. */
+  families?: number
 }
 
 export interface PaletteConfig {
   seeds: SeedInput[]
+  spectrum?: SpectrumConfig
   ladder?: LadderConfig
   chroma?: ChromaConfig
   /** Degrees of hue rotation across the whole ramp. Defaults to 0. */
   hueDrift?: number
   neutrals?: NeutralsConfig
-  semantics?: SemanticsConfig
-  harmony?: HarmonyConfig
   gamut?: GamutId
 }
 
@@ -161,8 +143,7 @@ export interface ResolvedConfig {
   chromaPoints: { light: number; peak: number; dark: number; ceilingScale: number }
   hueDrift: number
   neutrals: Required<NeutralsConfig>
-  semantics: { enabled: boolean; harmonize: boolean; hues: Record<SemanticRole, number> }
-  harmony: { auto: boolean; include: HarmonyKind[] }
+  families: number
   gamut: GamutId
 }
 
@@ -171,8 +152,10 @@ export interface ResolvedSeed {
   /** The colour as typed, before any clipping into sRGB. */
   input: string
   mode: SeedMode
-  role: SeedRole
-  name: string
+  /** Position in the seeds array. */
+  index: number
+  /** Name override, if the caller supplied one. */
+  name?: string
   /** OKLCH of the (clipped) seed. */
   oklch: OklchTuple
   /** Relative luminance of the seed. */
@@ -312,6 +295,7 @@ export interface RampSeedInfo {
 
 export interface Ramp {
   role: RampRole
+  /** The colour's name, e.g. `teal`. */
   name: string
   /** Null for an achromatic ramp. */
   hue: number | null
@@ -320,19 +304,21 @@ export interface Ramp {
   report: RampReport
 }
 
-export interface HarmonySuggestion {
-  kind: HarmonyKind
-  /** The hues this scheme adds, in degrees. */
-  hues: number[]
-  /** How well the seeds fit this scheme, 0..1. */
-  confidence: number
-  preview: Array<{ hue: number; hex: HexColor }>
-  rationale: string
+/** A conventional interface role, matched to the nearest family. */
+export interface RoleHint {
+  role: string
+  family: string
+  /** How far that family sits from the conventional hue, in degrees. */
+  offset: number
 }
 
 export interface Palette {
   ramps: Ramp[]
-  suggestions: HarmonySuggestion[]
+  /**
+   * Which family sits nearest each conventional role. Advice, not assignment —
+   * nothing in the palette is reserved for these.
+   */
+  roleHints: RoleHint[]
   /** Valid across every ramp whose `usesSharedLadder` is true. */
   sharedPairTable: PairEntry[]
   resolved: ResolvedConfig
@@ -355,6 +341,7 @@ export type EngineErrorCode =
   | 'NO_SEEDS'
   | 'TOO_MANY_SEEDS'
   | 'STEPS_OUT_OF_RANGE'
+  | 'FAMILIES_OUT_OF_RANGE'
   | 'SLOT_NOT_FOUND'
   | 'ANCHORS_NOT_MONOTONE'
   | 'INVALID_CONFIG'

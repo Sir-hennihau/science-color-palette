@@ -43,13 +43,25 @@ async function open(url) {
 await open('/')
 check('untouched palette leaves the address clean', new URL(page.url()).search === '',
   page.url())
-check('default ramp has eleven shades',
-  await page.locator('main button[aria-label^="primary "]').count() === 11)
+const firstFamily = async () => {
+  const label = await swatches().first().getAttribute('aria-label')
+  return label.split(' ')[0]
+}
+const familyShades = async () =>
+  page.locator(`main button[aria-label^="${await firstFamily()} "]`).count()
+
+check('default palette has ten families plus greys',
+  await page.locator('[data-ramp]').count() === 11,
+  `${await page.locator('[data-ramp]').count()} ramps`)
+check('default ramp has eleven shades', (await familyShades()) === 11)
+check('families are named after colours, not jobs', await (async () => {
+  const names = await page.locator('[data-ramp] h3').allInnerTexts()
+  return !names.some((n) => ['danger', 'warning', 'success', 'info', 'primary'].includes(n.trim()))
+})(), (await page.locator('[data-ramp] h3').allInnerTexts()).join(','))
 
 // --- deep link --------------------------------------------------------------
 await open('/?steps=13&chroma=vivid')
-check('a deep link rebuilds the palette',
-  await page.locator('main button[aria-label^="primary "]').count() === 13)
+check('a deep link rebuilds the palette', (await familyShades()) === 13)
 check('the deep-linked control shows its value',
   await page.getByRole('button', { name: 'Vivid' }).getAttribute('aria-pressed') === 'true')
 
@@ -61,12 +73,15 @@ await hexField.press('Enter')
 await page.waitForTimeout(350)
 check('typing a colour reaches the address', page.url().includes('14b8a6'), page.url())
 check('typing a colour regenerates the ramp',
-  (await swatches().first().getAttribute('aria-label'))?.includes('primary 50'))
+  (await swatches().first().getAttribute('aria-label'))?.includes(' 50,'),
+  await swatches().first().getAttribute('aria-label'))
+check('the seeded family is marked as yours',
+  (await page.getByText('yours', { exact: true }).count()) >= 1)
 
 // --- one history entry per gesture -----------------------------------------
 await open('/')
 const before = page.url()
-const slider = page.getByLabel('Number of shades per ramp')
+const slider = page.getByLabel('Number of shades per family')
 const startValue = await slider.inputValue()
 const box = await slider.boundingBox()
 
@@ -84,8 +99,7 @@ await page.waitForTimeout(400)
 const endValue = await slider.inputValue()
 check('a drag moves the control', endValue !== startValue, `${startValue} -> ${endValue}`)
 check('a drag reaches the address', page.url().includes(`steps=${endValue}`), page.url())
-check('the palette follows the drag',
-  await page.locator('main button[aria-label^="primary "]').count() === Number(endValue))
+check('the palette follows the drag', (await familyShades()) === Number(endValue))
 
 await page.goBack({ waitUntil: 'networkidle' })
 await ready()
@@ -99,12 +113,33 @@ await page.keyboard.press('ArrowLeft')
 await page.waitForTimeout(500)
 check('the keyboard commits too', page.url().includes('steps='), page.url())
 
+// --- the families control ---------------------------------------------------
+await open('/?families=4')
+check('the family count is honoured', await page.locator('[data-ramp]').count() === 5,
+  `${await page.locator('[data-ramp]').count()} ramps`)
+await open('/?families=16')
+check('sixteen families still renders', await page.locator('[data-ramp]').count() === 17)
+
+// Crowding geometry is unit-tested; here it is enough that advice surfaces.
+
+// --- role hints, offered rather than imposed --------------------------------
+await open('/')
+check('conventional roles are suggested, not assigned',
+  (await page.getByText('If you need conventional roles').count()) === 1)
+
+// --- all inputs are above the palette ---------------------------------------
+const controlsBox = await page.getByLabel('Number of colour families').boundingBox()
+const boardBox = await page.locator('[data-ramp]').first().boundingBox()
+check('every input sits above the palette',
+  controlsBox.y + controlsBox.height <= boardBox.y,
+  `controls end ${Math.round(controlsBox.y + controlsBox.height)}, board starts ${Math.round(boardBox.y)}`)
+
 // --- exact mode -------------------------------------------------------------
 await open('/?seeds=%5B%22635bff.x%22%5D')
 check('exact mode keeps the colour verbatim',
   await page.locator('main button[aria-label*="kept exactly"]').count() === 1)
 check('exact mode is reflected in the control',
-  await page.getByRole('button', { name: 'Keep exact' }).getAttribute('aria-pressed') === 'true')
+  await page.getByRole('button', { name: 'Exact', exact: true }).getAttribute('aria-pressed') === 'true')
 
 // --- a broken promise is surfaced ------------------------------------------
 await open('/?seeds=%5B%22808080.x%22%5D')
@@ -118,7 +153,7 @@ await open('/')
 await page.getByRole('button', { name: 'Export' }).click()
 await page.waitForTimeout(250)
 const css = await page.locator('pre').innerText()
-check('CSS export contains custom properties', css.includes('--color-primary-600:'))
+check('CSS export contains custom properties', /--color-[a-z-]+-600:/.test(css))
 check('CSS export gates OKLCH behind @supports', css.includes('@supports (color: oklch'))
 await page.getByRole('button', { name: 'Design tokens' }).click()
 await page.waitForTimeout(250)
@@ -148,11 +183,13 @@ await page.keyboard.press('Tab')
 const firstFocus = await page.evaluate(() => document.activeElement?.getAttribute('aria-label')
   ?? document.activeElement?.textContent?.trim() ?? document.activeElement?.tagName)
 check('tabbing reaches a control', Boolean(firstFocus), String(firstFocus))
-await swatches().nth(5).focus()
+const target = swatches().nth(5)
+const targetHex = (await target.getAttribute('aria-label')).match(/#[0-9a-f]{6}/)[0]
+await target.focus()
 await page.keyboard.press('Enter')
-await page.waitForTimeout(200)
-check('a swatch can be activated from the keyboard',
-  (await page.getByText(/^Copied #|primary/).count()) > 0)
+await page.waitForTimeout(300)
+check('a swatch copies from the keyboard',
+  (await page.getByText(`Copied ${targetHex}`).count()) > 0, targetHex)
 
 // --- accessibility ----------------------------------------------------------
 for (const scheme of ['light', 'dark']) {

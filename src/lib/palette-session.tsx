@@ -21,7 +21,7 @@ import {
 } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-import { generatePalette, type Palette } from '../engine/index.ts'
+import { generatePalette, hueDistance, type Palette } from '../engine/index.ts'
 import {
   packSeed,
   toEngineConfig,
@@ -166,10 +166,25 @@ export function PaletteSessionProvider({
 
   const addSeed = useCallback(() => {
     const current = unpackSeeds(currentConfig().seeds)
-    // Offer the complement of the primary, which is the most useful next colour
-    // far more often than another shade of what is already there.
-    const suggestion =
-      palette.suggestions.find((s) => s.kind === 'complementary')?.preview[0]?.hex ?? '#f59e0b'
+
+    // Offer the family furthest from every colour already chosen: the most
+    // useful next seed is the one that opens up a part of the wheel the palette
+    // is not yet anchored in.
+    const anchored = palette.ramps.filter((r) => r.seed && r.hue !== null).map((r) => r.hue!)
+    const candidates = palette.ramps.filter((r) => !r.seed && r.hue !== null)
+
+    let suggestion = '#f59e0b'
+    let best = -1
+    for (const candidate of candidates) {
+      const distance = anchored.length
+        ? Math.min(...anchored.map((hue) => hueDistance(hue, candidate.hue!)))
+        : 180
+      if (distance > best) {
+        best = distance
+        const mid = candidate.swatches[Math.min(5, candidate.swatches.length - 1)]
+        suggestion = mid.hex
+      }
+    }
 
     commit({
       seeds: [...current.map(packSeed), packSeed({ hex: suggestion, mode: 'harmonize' })],

@@ -15,14 +15,7 @@
 
 export { generatePalette } from './palette.ts'
 export { generateRamp, type RampSpec, type SeedInsert } from './ramp.ts'
-export {
-  resolveConfig,
-  parseConfig,
-  serializeConfig,
-  SEMANTIC_HUES,
-  SEMANTIC_MAX_ROTATION,
-  MAX_SEEDS,
-} from './config.ts'
+export { resolveConfig, parseConfig, serializeConfig, MAX_SEEDS } from './config.ts'
 
 // Ladder and step counts, for UI controls and labels.
 export {
@@ -86,7 +79,15 @@ export { inGamut, mapToGamut } from './color/gamut.ts'
 
 export { CHROMA_PRESETS, resolveChromaPoints, type ChromaPoints } from './curves/chroma.ts'
 export { MAX_HUE_DRIFT } from './curves/hue.ts'
-export { ALL_HARMONY_KINDS, harmonyHues } from './harmony.ts'
+export {
+  planSpectrum,
+  suggestRoles,
+  nameAnchors,
+  DEFAULT_FAMILIES,
+  MAX_FAMILIES,
+  MIN_FAMILIES,
+  type SpectrumFamily,
+} from './spectrum.ts'
 export { blendTowardHue, describeDelta, MAX_BLEND_ROTATION } from './seeds.ts'
 export { NEUTRAL_MAX_CHROMA } from './neutrals.ts'
 

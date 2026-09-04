@@ -2,19 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { generatePalette } from '../palette.ts'
 import { inGamut } from '../color/gamut.ts'
-import { oklchToRgb, quantize, rgb8ToHex } from '../color/space.ts'
-import { solveStep } from '../solve.ts'
 import { apcaLc } from '../contrast/apca.ts'
 import { wcagContrastHex } from '../contrast/wcag.ts'
 import { EngineError, type Palette } from '../types.ts'
 
 const BLURPLE = '#635bff'
-
-/** A mid-lightness, colourful hex at the given OKLCH hue. */
-function hexAtHue(hue: number): string {
-  const solved = solveStep({ yTarget: 0.2, hue, fraction: 0.8, gamut: 'srgb' })
-  return rgb8ToHex(quantize(oklchToRgb(solved)))
-}
 
 function rampNamed(palette: Palette, name: string) {
   const ramp = palette.ramps.find((r) => r.name === name)
@@ -22,24 +14,143 @@ function rampNamed(palette: Palette, name: string) {
   return ramp
 }
 
+/** The family anchored on the first seed, whatever colour name it received. */
+function seedRamp(palette: Palette) {
+  const ramp = palette.ramps.find((r) => r.seed)
+  if (!ramp) throw new Error('no seeded ramp')
+  return ramp
+}
+
 describe('generating a palette', () => {
-  it('produces the expected ramps from a single seed', () => {
+  it('builds a full spectrum of named families from a single seed', () => {
     const palette = generatePalette({ seeds: [{ color: BLURPLE }] })
 
-    expect(palette.ramps.map((r) => r.name)).toEqual([
-      'primary',
-      'neutral',
-      'success',
-      'warning',
-      'danger',
-      'info',
-    ])
+    // Ten families plus greys, named by colour rather than by job.
+    expect(palette.ramps).toHaveLength(11)
+    expect(palette.ramps.at(-1)!.name).toBe('neutral')
     expect(palette.ramps.every((r) => r.swatches.length === 11)).toBe(true)
+
+    const names = palette.ramps.map((r) => r.name)
+    expect(new Set(names).size).toBe(names.length)
+    for (const banned of ['danger', 'warning', 'success', 'info', 'primary']) {
+      expect(names).not.toContain(banned)
+    }
+  })
+
+  it('starts the walk at the seed and continues round the wheel', () => {
+    const palette = generatePalette({ seeds: [{ color: '#14b8a6' }] })
+    const families = palette.ramps.filter((r) => r.role !== 'neutral')
+
+    // The seed's own family comes first.
+    expect(families[0].seed).toBeDefined()
+    expect(families[0].name).toBe('teal')
+
+    // And the rest ascend in hue from there, wrapping once.
+    const offsets = families.map((r) => (r.hue! - families[0].hue! + 360) % 360)
+    for (let i = 1; i < offsets.length; i++) {
+      expect(offsets[i], `family ${i}`).toBeGreaterThan(offsets[i - 1])
+    }
+  })
+
+  it('names families after the colours they actually are', () => {
+    // A seed that is plainly blue should produce a family called blue, and the
+    // spectrum around it should carry the other familiar names.
+    const palette = generatePalette({ seeds: [{ color: '#3b82f6' }] })
+    const names = palette.ramps.map((r) => r.name)
+
+    expect(names).toContain('blue')
+    expect(names.filter((n) => n.startsWith('hue-'))).toEqual([])
+  })
+
+  it('respects a dynamic family count', () => {
+    for (const families of [3, 6, 10, 16]) {
+      const palette = generatePalette({
+        seeds: [{ color: BLURPLE }],
+        spectrum: { families },
+      })
+      expect(palette.ramps.filter((r) => r.role !== 'neutral')).toHaveLength(families)
+    }
+  })
+
+  it('anchors every seed in the spectrum', () => {
+    const palette = generatePalette({
+      seeds: [{ color: '#3b82f6' }, { color: '#f59e0b' }, { color: '#ec4899' }],
+    })
+    const seeded = palette.ramps.filter((r) => r.seed)
+    expect(seeded).toHaveLength(3)
+  })
+
+  it('spreads the spectrum evenly from a lone seed', () => {
+    const palette = generatePalette({
+      seeds: [{ color: BLURPLE }],
+      spectrum: { families: 8 },
+    })
+    const hues = palette.ramps.filter((r) => r.role !== 'neutral').map((r) => r.hue!)
+
+    for (let i = 1; i < hues.length; i++) {
+      const gap = (hues[i] - hues[i - 1] + 360) % 360
+      expect(gap, `gap ${i}`).toBeCloseTo(45, 1)
+    }
+  })
+
+  it('gives the wide arc more families when two seeds sit close together', () => {
+    // Two nearby colours leave one narrow arc and one wide one; the wide one is
+    // where there is actually room for distinguishable colours.
+    const palette = generatePalette({
+      seeds: [{ color: '#3b82f6' }, { color: '#6366f1' }],
+      spectrum: { families: 10 },
+    })
+    const families = palette.ramps.filter((r) => r.role !== 'neutral')
+    expect(families).toHaveLength(10)
+
+    const seedHues = families.filter((r) => r.seed).map((r) => r.hue!).sort((a, b) => a - b)
+    const inNarrowArc = families.filter(
+      (r) => !r.seed && r.hue! > seedHues[0] && r.hue! < seedHues[1],
+    )
+    expect(inNarrowArc.length).toBeLessThan(3)
+  })
+
+  it('says when two families are too close to tell apart', () => {
+    // Crowding comes from colours sitting close on the wheel, not from a high
+    // family count on its own: ten families are 36 degrees apart, which is
+    // plenty. Two seeds a little way apart is what squeezes a gap shut.
+    const roomy = generatePalette({
+      seeds: [{ color: BLURPLE }],
+      spectrum: { families: 16 },
+    })
+    expect(roomy.warnings.map((w) => w.code)).not.toContain('SPECTRUM_CROWDED')
+
+    const crowded = generatePalette({
+      seeds: [{ color: '#3b82f6' }, { color: '#7c6df5' }],
+      spectrum: { families: 16 },
+    })
+    expect(crowded.warnings.map((w) => w.code)).toContain('SPECTRUM_CROWDED')
+  })
+
+  it('merges two seeds that are the same colour', () => {
+    // Two hues within ten degrees cannot anchor two distinct families, so one
+    // family carries both rather than the palette gaining a duplicate row.
+    const palette = generatePalette({
+      seeds: [{ color: '#3b82f6' }, { color: '#3f85f7' }],
+      spectrum: { families: 6 },
+    })
+    expect(palette.ramps.filter((r) => r.role !== 'neutral')).toHaveLength(6)
+    expect(palette.ramps.filter((r) => r.seed)).toHaveLength(1)
+  })
+
+  it('suggests which family suits each conventional role', () => {
+    const palette = generatePalette({ seeds: [{ color: BLURPLE }] })
+    const roles = palette.roleHints.map((h) => h.role)
+
+    expect(roles).toEqual(['danger', 'warning', 'success', 'info'])
+    for (const hint of palette.roleHints) {
+      expect(palette.ramps.map((r) => r.name)).toContain(hint.family)
+    }
   })
 
   it('labels shades the familiar way', () => {
     const palette = generatePalette({ seeds: [{ color: BLURPLE }] })
-    expect(rampNamed(palette, 'primary').swatches.map((s) => s.label)).toEqual([
+    expect(seedRamp(palette).swatches.map((s) => s.label)).toEqual([
       50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950,
     ])
   })
@@ -85,7 +196,6 @@ describe('generating a palette', () => {
   it('gives shades 500, 600 and 700 the promised ratios in every hue', () => {
     const palette = generatePalette({
       seeds: [{ color: '#ffff00' }, { color: '#0000ff' }],
-      harmony: { include: ['complementary', 'triadic'] },
     })
 
     const expected: Record<number, number> = { 500: 3, 600: 4.5, 700: 7 }
@@ -107,7 +217,6 @@ describe('generating a palette', () => {
     // This is what makes one contrast table valid for the whole palette.
     const palette = generatePalette({
       seeds: [{ color: BLURPLE }, { color: '#f59e0b' }],
-      harmony: { auto: true },
     })
 
     const shared = palette.ramps.filter((r) => r.report.usesSharedLadder)
@@ -148,7 +257,7 @@ describe('generating a palette', () => {
 
   it('states which shade first clears each level on white', () => {
     const palette = generatePalette({ seeds: [{ color: BLURPLE }] })
-    const { firstOnWhite } = rampNamed(palette, 'primary').report
+    const { firstOnWhite } = seedRamp(palette).report
 
     expect(firstOnWhite.aaLarge).toBe(500)
     expect(firstOnWhite.aa).toBe(600)
@@ -181,7 +290,7 @@ describe('generating a palette', () => {
 describe('seed modes', () => {
   it('keeps an exact seed byte for byte', () => {
     const palette = generatePalette({ seeds: [{ color: BLURPLE, mode: 'exact' }] })
-    const primary = rampNamed(palette, 'primary')
+    const primary = seedRamp(palette)
 
     const seeded = primary.swatches.filter((s) => s.isSeed)
     expect(seeded).toHaveLength(1)
@@ -192,7 +301,7 @@ describe('seed modes', () => {
 
   it('moves a harmonized seed onto the ladder and says how far', () => {
     const palette = generatePalette({ seeds: [{ color: BLURPLE, mode: 'harmonize' }] })
-    const primary = rampNamed(palette, 'primary')
+    const primary = seedRamp(palette)
 
     expect(primary.swatches.some((s) => s.isSeed)).toBe(false)
     expect(primary.seed?.mode).toBe('harmonize')
@@ -202,13 +311,13 @@ describe('seed modes', () => {
 
   it('marks an exact ramp as no longer sharing the ladder', () => {
     const palette = generatePalette({ seeds: [{ color: BLURPLE, mode: 'exact' }] })
-    expect(rampNamed(palette, 'primary').report.usesSharedLadder).toBe(false)
+    expect(seedRamp(palette).report.usesSharedLadder).toBe(false)
   })
 
   it('keeps an exact ramp monotone and displayable', () => {
     for (const color of ['#635bff', '#000000', '#ffffff', '#808080', '#ffff00', '#0a0a0a']) {
       const palette = generatePalette({ seeds: [{ color, mode: 'exact' }] })
-      const primary = rampNamed(palette, 'primary')
+      const primary = seedRamp(palette)
 
       expect(
         primary.swatches.some((s) => s.hex === color.toLowerCase()),
@@ -230,7 +339,7 @@ describe('seed modes', () => {
     // that light only reaches about 3.9:1. Exact mode keeps the colour and says
     // what it cost.
     const palette = generatePalette({ seeds: [{ color: '#808080', mode: 'exact' }] })
-    const primary = rampNamed(palette, 'primary')
+    const primary = seedRamp(palette)
 
     const broken = primary.report.brokenGuarantees
     expect(broken.length).toBeGreaterThan(0)
@@ -240,14 +349,14 @@ describe('seed modes', () => {
     const warning = primary.report.warnings.find((w) => w.code === 'GUARANTEE_NOT_MET')
     expect(warning).toBeDefined()
     // And it points at a shade that does work.
-    expect(warning!.message).toMatch(/Use primary \d+ instead/)
+    expect(warning!.message).toMatch(/Use \w+ \d+ instead/)
   })
 
   it('honours an explicit slot and rejects an impossible one', () => {
     const palette = generatePalette({
       seeds: [{ color: BLURPLE, mode: 'exact', slot: 400 }],
     })
-    const seeded = rampNamed(palette, 'primary').swatches.find((s) => s.isSeed)
+    const seeded = seedRamp(palette).swatches.find((s) => s.isSeed)
     expect(seeded?.label).toBe(400)
 
     expect(() => generatePalette({ seeds: [{ color: BLURPLE, slot: 42 }] })).toThrow(
@@ -255,7 +364,10 @@ describe('seed modes', () => {
     )
   })
 
-  it('rotates a blended seed toward the primary but no further than 15 degrees', () => {
+  it('rotates a blended seed toward the first but no further than 15 degrees', () => {
+    const seedHue = (palette: Palette, hex: string) =>
+      palette.ramps.find((r) => r.seed?.input === hex)!.hue!
+
     const blended = generatePalette({
       seeds: [{ color: BLURPLE }, { color: '#f59e0b', blendHue: true }],
     })
@@ -263,89 +375,48 @@ describe('seed modes', () => {
       seeds: [{ color: BLURPLE }, { color: '#f59e0b' }],
     })
 
-    const rotation = Math.abs(
-      rampNamed(blended, 'secondary').hue! - rampNamed(plain, 'secondary').hue!,
-    )
-
+    const rotation = Math.abs(seedHue(blended, '#f59e0b') - seedHue(plain, '#f59e0b'))
     expect(rotation).toBeGreaterThan(0)
     expect(rotation).toBeLessThanOrEqual(15.0001)
   })
 })
 
-describe('semantic colours', () => {
-  /** Hue ranges within which each role still reads as what it means. */
-  const RECOGNISABLE: Record<string, [number, number]> = {
-    danger: [8, 40],
-    warning: [52, 98],
-    success: [128, 172],
-    info: [208, 268],
-  }
-
-  it('stays recognisable whatever the primary hue is', () => {
-    // Harmonising pulls semantic hues toward the primary, and left unchecked a
-    // yellow primary dragged danger to 42 degrees — an orange "error" sitting
-    // close enough to the warning colour to be confused with it.
-    for (let hue = 0; hue < 360; hue += 15) {
-      const palette = generatePalette({ seeds: [{ color: hexAtHue(hue) }] })
-
-      for (const [role, [low, high]] of Object.entries(RECOGNISABLE)) {
-        const ramp = rampNamed(palette, role)
-        expect(ramp.hue, `${role} with primary at ${hue} degrees`).toBeGreaterThanOrEqual(low)
-        expect(ramp.hue, `${role} with primary at ${hue} degrees`).toBeLessThanOrEqual(high)
-      }
-    }
-  })
-
-  it('keeps danger and warning clearly apart', () => {
-    for (let hue = 0; hue < 360; hue += 15) {
-      const palette = generatePalette({ seeds: [{ color: hexAtHue(hue) }] })
-      const separation = Math.abs(
-        rampNamed(palette, 'danger').hue! - rampNamed(palette, 'warning').hue!,
-      )
-      expect(separation, `primary at ${hue} degrees`).toBeGreaterThan(20)
-    }
-  })
-
-  it('still leans them toward the palette', () => {
-    // The point of harmonising is not lost: a blue primary should still pull
-    // the semantic hues measurably, just not out of recognition.
-    const neutral = generatePalette({
-      seeds: [{ color: '#808080' }],
-      semantics: { harmonize: false },
-    })
-    const blue = generatePalette({ seeds: [{ color: '#3b82f6' }] })
-
-    expect(rampNamed(blue, 'success').hue).not.toBeCloseTo(
-      rampNamed(neutral, 'success').hue!,
-      1,
-    )
-  })
-
-  it('can be left unharmonized', () => {
-    const palette = generatePalette({
-      seeds: [{ color: '#3b82f6' }],
-      semantics: { harmonize: false },
-    })
-    expect(rampNamed(palette, 'danger').hue).toBeCloseTo(27, 6)
-    expect(rampNamed(palette, 'success').hue).toBeCloseTo(150, 6)
-  })
-})
-
 describe('greyscale seeds', () => {
-  it('stays grey instead of inventing a hue', () => {
+  it('stays grey instead of inventing a spectrum', () => {
+    // A colour with no hue gives nothing to build a spectrum from, so the
+    // honest answer is greys and a note saying why.
     const palette = generatePalette({ seeds: [{ color: '#808080' }] })
 
-    expect(rampNamed(palette, 'primary').hue).toBeNull()
-    expect(rampNamed(palette, 'primary').swatches.every((s) => s.oklch.c === 0)).toBe(true)
-    expect(rampNamed(palette, 'neutral').hue).toBeNull()
+    expect(palette.ramps.map((r) => r.name)).toEqual(['grey', 'neutral'])
+    for (const ramp of palette.ramps) {
+      expect(ramp.hue).toBeNull()
+      expect(ramp.swatches.every((s) => s.oklch.c === 0)).toBe(true)
+    }
     expect(palette.warnings.map((w) => w.code)).toContain('NO_HUE')
+    expect(palette.roleHints).toEqual([])
   })
 
-  it('keeps semantic colours meaningful even so', () => {
-    const palette = generatePalette({ seeds: [{ color: '#808080' }] })
-    for (const role of ['success', 'warning', 'danger', 'info']) {
-      expect(rampNamed(palette, role).hue, role).not.toBeNull()
-    }
+  it('still ships a colourless seed that was marked exact', () => {
+    // A grey cannot anchor a hue, but it is still a colour someone asked to
+    // keep, so it has to appear somewhere in the palette.
+    const palette = generatePalette({ seeds: [{ color: '#808080', mode: 'exact' }] })
+    const grey = rampNamed(palette, 'grey')
+
+    expect(grey.swatches.filter((s) => s.isSeed)).toHaveLength(1)
+    expect(grey.swatches.find((s) => s.isSeed)!.hex).toBe('#808080')
+  })
+
+  it('names several colourless seeds apart', () => {
+    const palette = generatePalette({
+      seeds: [{ color: '#808080' }, { color: '#333333' }],
+    })
+    expect(palette.ramps.map((r) => r.name)).toEqual(['grey', 'grey-2', 'neutral'])
+  })
+
+  it('builds the spectrum from whichever colour does have a hue', () => {
+    const palette = generatePalette({ seeds: [{ color: '#808080' }, { color: '#3b82f6' }] })
+    expect(palette.ramps.filter((r) => r.role !== 'neutral').length).toBeGreaterThan(5)
+    expect(palette.ramps.map((r) => r.name)).toContain('blue')
   })
 })
 
@@ -357,7 +428,7 @@ describe('neutrals', () => {
     const mid = neutral.swatches[5]
     expect(mid.oklch.c).toBeGreaterThan(0)
     expect(mid.oklch.c).toBeLessThan(0.02)
-    expect(neutral.hue).toBeCloseTo(rampNamed(palette, 'primary').hue!, 4)
+    expect(neutral.hue).toBeCloseTo(seedRamp(palette).hue!, 4)
   })
 
   it('goes fully grey at zero tint', () => {
@@ -383,7 +454,6 @@ describe('determinism', () => {
       seeds: [{ color: BLURPLE, mode: 'exact' as const }, { color: '#f59e0b' }],
       ladder: { steps: 9 },
       chroma: { preset: 'vivid' as const },
-      harmony: { auto: true },
     }
 
     expect(JSON.stringify(generatePalette(config))).toBe(
@@ -392,14 +462,13 @@ describe('determinism', () => {
   })
 
   it('survives a JSON round trip', () => {
-    const palette = generatePalette({ seeds: [{ color: BLURPLE }], harmony: { auto: true } })
+    const palette = generatePalette({ seeds: [{ color: BLURPLE }] })
     expect(JSON.parse(JSON.stringify(palette))).toEqual(palette)
   })
 
   it('contains no unrepresentable numbers', () => {
     const palette = generatePalette({
       seeds: [{ color: BLURPLE, mode: 'exact' }, { color: '#000000' }],
-      harmony: { auto: true },
     })
 
     const walk = (value: unknown, path: string): void => {

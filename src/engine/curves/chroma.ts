@@ -49,16 +49,28 @@ export const DEFAULT_CHROMA_PRESET: ChromaPreset = 'natural'
 /**
  * Absolute chroma ceiling by ramp position, at `ceilingScale` 1.
  *
- * Read off the widest chroma each step reaches across the reference ramps. Past
- * roughly a third of the way down it exceeds anything the sRGB envelope offers,
- * so it stops binding and the share rule takes over entirely.
+ * The *median* chroma each step reaches across the reference ramps, not the
+ * widest. That distinction matters more than it sounds: taking the maximum lets
+ * every hue reach the chroma of whichever hue happens to be most capable at
+ * that lightness, which is no restraint at all. Measured against the references
+ * hue by hue, it left teal and green two to three times too colourful in their
+ * lightest shades while blue — whose envelope is modest up there anyway — came
+ * out right.
+ *
+ * The two rules end up splitting the work cleanly. Blue never touches this
+ * ceiling and is shaped entirely by its share of the envelope; teal and green
+ * are held by the ceiling through the light half, where their envelope offers
+ * far more chroma than a palette should take. Past mid-ramp the ceiling exceeds
+ * anything sRGB can do and stops mattering.
  */
 const CEILING_POINTS: readonly Point[] = [
-  { x: 0, y: 0.03 },
-  { x: 0.11, y: 0.075 },
-  { x: 0.22, y: 0.135 },
-  { x: 0.33, y: 0.19 },
-  { x: 0.5, y: 0.4 },
+  { x: 0, y: 0.016 },
+  { x: 0.11, y: 0.05 },
+  { x: 0.22, y: 0.09 },
+  { x: 0.33, y: 0.128 },
+  { x: 0.44, y: 0.16 },
+  { x: 0.56, y: 0.195 },
+  { x: 0.67, y: 0.23 },
   { x: 1, y: 0.4 },
 ]
 
