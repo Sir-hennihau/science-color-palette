@@ -8,7 +8,7 @@ import { wcagContrastHex } from '../contrast/wcag.ts'
 import { exportPalette, EXPORT_FORMATS } from '../export/index.ts'
 import { MAX_HUE_DRIFT } from '../curves/hue.ts'
 import { MAX_STEPS, MIN_STEPS } from '../ladder.ts'
-import type { ChromaPreset, PaletteConfig, SeedMode } from '../types.ts'
+import type { ChromaPreset, Palette, PaletteConfig, SeedMode } from '../types.ts'
 
 /**
  * Invariants that must hold for *any* input, checked against generated configs.
@@ -39,24 +39,51 @@ const configArb: fc.Arbitrary<PaletteConfig> = fc.record({
   harmony: fc.record({ auto: fc.boolean() }),
 })
 
+/**
+ * Every check runs over the same generated configs, and generation is
+ * deterministic, so the palettes are computed once and shared. Without this the
+ * suite generates the same few hundred palettes once per invariant.
+ */
+const cache = new Map<string, Palette>()
+
+function paletteFor(config: PaletteConfig): Palette {
+  const key = JSON.stringify(config)
+  let palette = cache.get(key)
+  if (!palette) {
+    palette = generatePalette(config)
+    cache.set(key, palette)
+  }
+  return palette
+}
+
+/**
+ * Generous timeout: the first check pays for sampling the chroma envelope of
+ * every random hue in the run, which is real work and worth doing.
+ */
+const TIMEOUT_MS = 60_000
+
 function check(name: string, predicate: (config: PaletteConfig) => void): void {
-  it(name, () => {
-    fc.assert(
-      fc.property(configArb, (config) => {
-        predicate(config)
-      }),
-      { numRuns: RUNS, seed: SEED },
-    )
-  })
+  it(
+    name,
+    () => {
+      fc.assert(
+        fc.property(configArb, (config) => {
+          predicate(config)
+        }),
+        { numRuns: RUNS, seed: SEED },
+      )
+    },
+    TIMEOUT_MS,
+  )
 }
 
 describe('invariants for any palette', () => {
   check('never throws on a well-formed config', (config) => {
-    expect(() => generatePalette(config)).not.toThrow()
+    expect(() => paletteFor(config)).not.toThrow()
   })
 
   check('every colour is displayable', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       for (const swatch of ramp.swatches) {
         expect(swatch.hex).toMatch(/^#[0-9a-f]{6}$/)
         expect(inGamut(swatch.oklch, 'srgb')).toBe(true)
@@ -65,7 +92,7 @@ describe('invariants for any palette', () => {
   })
 
   check('every ramp runs strictly light to dark', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       for (let i = 1; i < ramp.swatches.length; i++) {
         expect(ramp.swatches[i].wcag.y).toBeLessThan(ramp.swatches[i - 1].wcag.y)
       }
@@ -73,7 +100,7 @@ describe('invariants for any palette', () => {
   })
 
   check('a shared-ladder ramp always keeps its contrast promises', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       if (!ramp.report.usesSharedLadder) continue
       expect(ramp.report.brokenGuarantees).toEqual([])
     }
@@ -82,7 +109,7 @@ describe('invariants for any palette', () => {
   check('a broken promise is always reported, never silent', (config) => {
     // Exact mode may cost a guarantee. What it may never do is fail one without
     // saying so.
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       for (const swatch of ramp.swatches) {
         for (const guarantee of swatch.guarantees) {
           if (guarantee.met) continue
@@ -98,7 +125,7 @@ describe('invariants for any palette', () => {
   })
 
   check('a measured guarantee agrees with an independent measurement', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       for (const swatch of ramp.swatches) {
         for (const guarantee of swatch.guarantees) {
           const background = guarantee.kind === 'ratioOnWhite' ? '#ffffff' : '#000000'
@@ -109,7 +136,7 @@ describe('invariants for any palette', () => {
   })
 
   check('an exact seed survives verbatim', (config) => {
-    const palette = generatePalette(config)
+    const palette = paletteFor(config)
 
     for (const [index, seed] of config.seeds.entries()) {
       if (seed.mode !== 'exact') continue
@@ -121,7 +148,7 @@ describe('invariants for any palette', () => {
   })
 
   check('a harmonized ramp never pins a swatch', (config) => {
-    const palette = generatePalette(config)
+    const palette = paletteFor(config)
 
     for (const [index, seed] of config.seeds.entries()) {
       if (seed.mode !== 'harmonize') continue
@@ -130,7 +157,7 @@ describe('invariants for any palette', () => {
   })
 
   check('the palette-wide table is a true lower bound', (config) => {
-    const palette = generatePalette(config)
+    const palette = paletteFor(config)
 
     for (const ramp of palette.ramps) {
       if (!ramp.report.usesSharedLadder) continue
@@ -141,7 +168,7 @@ describe('invariants for any palette', () => {
   })
 
   check('wider step separations never contrast less', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       const table = ramp.report.pairTable
       for (let i = 1; i < table.length; i++) {
         expect(table[i].minWcag).toBeGreaterThanOrEqual(table[i - 1].minWcag - 1e-9)
@@ -150,7 +177,7 @@ describe('invariants for any palette', () => {
   })
 
   check('label text on a swatch is the perceptually better choice', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       for (const swatch of ramp.swatches) {
         const black = Math.abs(apcaLc('#000000', swatch.hex))
         const white = Math.abs(apcaLc('#ffffff', swatch.hex))
@@ -162,24 +189,24 @@ describe('invariants for any palette', () => {
     }
   })
 
-  check('a WCAG-led choice of label colour would always clear 4.5:1', (config) => {
+  check('the conformant label colour always clears 4.5:1', (config) => {
     // APCA and WCAG sometimes disagree about which of black or white reads
-    // better, and the engine follows APCA. Anyone who has to follow WCAG can
-    // pick the other way from the same swatch and still be safe, because the
-    // worst case is the crossover luminance where both score about 4.58:1.
-    for (const ramp of generatePalette(config).ramps) {
+    // better. `onHex` follows APCA; `onHexWcag` is for when conformance has to
+    // be provable, and it is always safe because the worst case is the
+    // crossover luminance where both score about 4.58:1.
+    for (const ramp of paletteFor(config).ramps) {
       for (const swatch of ramp.swatches) {
-        const best = Math.max(
-          wcagContrastHex('#000000', swatch.hex),
-          wcagContrastHex('#ffffff', swatch.hex),
-        )
-        expect(best).toBeGreaterThan(4.5)
+        const black = wcagContrastHex('#000000', swatch.hex)
+        const white = wcagContrastHex('#ffffff', swatch.hex)
+
+        expect(swatch.onHexWcag).toBe(black >= white ? '#000000' : '#ffffff')
+        expect(wcagContrastHex(swatch.onHexWcag, swatch.hex)).toBeGreaterThan(4.5)
       }
     }
   })
 
   check('shade labels are unique and ordered', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       const labels = ramp.swatches.map((s) => s.label)
       expect(new Set(labels).size).toBe(labels.length)
       for (let i = 1; i < labels.length; i++) {
@@ -189,7 +216,7 @@ describe('invariants for any palette', () => {
   })
 
   check('hues stay in range and greys stay grey', (config) => {
-    for (const ramp of generatePalette(config).ramps) {
+    for (const ramp of paletteFor(config).ramps) {
       if (ramp.hue !== null) {
         expect(ramp.hue).toBeGreaterThanOrEqual(0)
         expect(ramp.hue).toBeLessThan(360)
@@ -204,7 +231,7 @@ describe('invariants for any palette', () => {
   })
 
   check('output is finite and JSON-safe', (config) => {
-    const palette = generatePalette(config)
+    const palette = paletteFor(config)
 
     const walk = (value: unknown): void => {
       if (typeof value === 'number') {
@@ -227,7 +254,7 @@ describe('invariants for any palette', () => {
   })
 
   check('every export format renders', (config) => {
-    const palette = generatePalette(config)
+    const palette = paletteFor(config)
     for (const descriptor of EXPORT_FORMATS) {
       const output = exportPalette(palette, descriptor.format)
       expect(output.length).toBeGreaterThan(50)

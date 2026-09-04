@@ -108,6 +108,7 @@ export function generateRamp(spec: RampSpec): Ramp {
         asBgWithWhiteText: apcaLc('#ffffff', entry.hex),
       },
       onHex: bestTextOn(entry.hex),
+      onHexWcag: bestTextOnByWcag(entry.hex),
       isSeed: entry.isSeed,
       gamutMapped: entry.gamutMapped,
       guarantees: [],
@@ -230,4 +231,18 @@ function bestTextOn(hex: string): string {
   const onBlack = Math.abs(apcaLc('#000000', hex))
   const onWhite = Math.abs(apcaLc('#ffffff', hex))
   return onBlack >= onWhite ? '#000000' : '#ffffff'
+}
+
+/**
+ * Black or white, whichever scores the higher WCAG ratio.
+ *
+ * The worst case is the crossover luminance where the two score equally, at
+ * about 4.58:1, so this choice always clears AA for body text. That makes it
+ * the right one for anything that has to pass an audit, and for text small
+ * enough that WCAG's pessimism about mid-tones is the safer assumption.
+ */
+function bestTextOnByWcag(hex: string): string {
+  return wcagContrastHex('#000000', hex) >= wcagContrastHex('#ffffff', hex)
+    ? '#000000'
+    : '#ffffff'
 }

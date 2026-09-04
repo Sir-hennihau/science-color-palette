@@ -113,6 +113,12 @@ function SeedNote({ ramp }: { ramp: Ramp }) {
   )
 }
 
+/**
+ * Labels are drawn in `onHexWcag` rather than the perceptually preferred
+ * `onHex`. At 10px this is the right call: WCAG's caution about text on
+ * mid-tones is warranted at that size, and it keeps the tool's own interface
+ * conformant with the standard it reports against.
+ */
 function SwatchButton({
   ramp,
   swatch,
@@ -135,14 +141,12 @@ function SwatchButton({
         swatch.isSeed ? ', your colour kept exactly' : ''
       }${failed ? ', below the usual contrast for this position' : ''}`}
       className="group relative flex h-16 flex-col justify-between p-1 text-left transition-transform hover:z-10 hover:scale-[1.04] sm:h-20 sm:p-1.5"
-      style={{ backgroundColor: swatch.hex, color: swatch.onHex }}
+      style={{ backgroundColor: swatch.hex, color: swatch.onHexWcag }}
     >
-      <span className="tabular text-[10px] font-medium leading-none opacity-80">
-        {swatch.label}
-      </span>
+      <span className="tabular text-[10px] font-medium leading-none">{swatch.label}</span>
 
       <span className="flex items-center justify-between gap-0.5">
-        <span className="tabular hidden text-[9.5px] leading-none opacity-70 sm:inline">
+        <span className="tabular hidden text-[9.5px] leading-none sm:inline">
           {swatch.hex.slice(1)}
         </span>
         {failed && <WarningMark />}
@@ -152,7 +156,7 @@ function SwatchButton({
         <span
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 border-2"
-          style={{ borderColor: swatch.onHex }}
+          style={{ borderColor: swatch.onHexWcag }}
         />
       )}
 

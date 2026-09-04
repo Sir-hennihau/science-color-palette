@@ -15,6 +15,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -116,58 +117,72 @@ export function PaletteSessionProvider({
     return chosen
   }, [chosen, palette])
 
-  const preview = useCallback((patch: Partial<PaletteSearch>) => {
-    // Transitions keep a drag smooth: React may show a slightly stale palette
-    // for a frame rather than blocking the pointer.
-    startTransition(() => {
-      setDraft((current) => ({ ...(current ?? search), ...patch }))
-    })
-  }, [search])
+  /**
+   * The in-flight gesture, tracked synchronously.
+   *
+   * `preview` renders through a transition so a drag stays smooth, which means
+   * the draft state may not have flushed by the time the pointer is released.
+   * Reading the value to commit from React state loses a quick flick entirely,
+   * so the pending patch is mirrored into a ref that is always current.
+   */
+  const pending = useRef<Partial<PaletteSearch>>({})
+
+  /** The configuration as it stands right now, gesture included. */
+  const currentConfig = useCallback(
+    (): PaletteSearch => ({ ...search, ...pending.current }),
+    [search],
+  )
+
+  const preview = useCallback(
+    (patch: Partial<PaletteSearch>) => {
+      pending.current = { ...pending.current, ...patch }
+      const next = { ...search, ...pending.current }
+      startTransition(() => setDraft(next))
+    },
+    [search],
+  )
 
   const commit = useCallback(
     (patch: Partial<PaletteSearch> = {}) => {
-      const next = { ...(draft ?? search), ...patch }
+      const next = { ...search, ...pending.current, ...patch }
+      pending.current = {}
       setDraft(null)
       void navigate({ to: '/', search: next })
     },
-    [draft, navigate, search],
+    [navigate, search],
   )
 
   const updateSeed = useCallback(
     (index: number, patch: Partial<UnpackedSeed>, options?: { preview?: boolean }) => {
-      const current = unpackSeeds((draft ?? search).seeds)
+      const current = unpackSeeds(currentConfig().seeds)
       const nextSeeds = current.map((seed, i) => (i === index ? { ...seed, ...patch } : seed))
       const packed = { seeds: nextSeeds.map(packSeed) }
 
       if (options?.preview) preview(packed)
       else commit(packed)
     },
-    [commit, draft, preview, search],
+    [commit, currentConfig, preview],
   )
 
   const addSeed = useCallback(() => {
-    const current = unpackSeeds((draft ?? search).seeds)
-    const palettePrimary = palette.ramps[0]
-    // Offer the complement of the primary, which is the most useful next
-    // colour far more often than another shade of what is already there.
+    const current = unpackSeeds(currentConfig().seeds)
+    // Offer the complement of the primary, which is the most useful next colour
+    // far more often than another shade of what is already there.
     const suggestion =
       palette.suggestions.find((s) => s.kind === 'complementary')?.preview[0]?.hex ?? '#f59e0b'
 
     commit({
-      seeds: [
-        ...current.map(packSeed),
-        packSeed({ hex: palettePrimary ? suggestion : '#f59e0b', mode: 'harmonize' }),
-      ],
+      seeds: [...current.map(packSeed), packSeed({ hex: suggestion, mode: 'harmonize' })],
     })
-  }, [commit, draft, palette, search])
+  }, [commit, currentConfig, palette])
 
   const removeSeed = useCallback(
     (index: number) => {
-      const current = unpackSeeds((draft ?? search).seeds)
+      const current = unpackSeeds(currentConfig().seeds)
       if (current.length <= 1) return
       commit({ seeds: current.filter((_, i) => i !== index).map(packSeed) })
     },
-    [commit, draft, search],
+    [commit, currentConfig],
   )
 
   const session = useMemo<PaletteSession>(

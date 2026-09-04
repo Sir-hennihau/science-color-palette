@@ -235,8 +235,18 @@ export interface Swatch {
   rgb: { r: number; g: number; b: number }
   wcag: WcagInfo
   apca: ApcaInfo
-  /** Hex to draw text in on top of this swatch, for maximum legibility. */
+  /**
+   * Black or white, whichever reads better on this swatch by APCA. The
+   * perceptually better choice, and the one to use for text at normal sizes.
+   */
   onHex: HexColor
+  /**
+   * Black or white, whichever scores the higher WCAG ratio. Always at least
+   * 4.58:1, so use this where conformance has to be demonstrable — or for very
+   * small text, where WCAG's conservatism is the safer bet. It differs from
+   * `onHex` on mid-tone colours, where the two standards disagree.
+   */
+  onHexWcag: HexColor
   /** True only for the verbatim seed of an `exact` ramp. */
   isSeed: boolean
   /** True when gamut mapping had to move this colour. */

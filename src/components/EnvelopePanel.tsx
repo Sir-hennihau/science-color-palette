@@ -188,7 +188,7 @@ function EnvelopePlot({ ramp }: { ramp: Ramp }) {
             y={HEIGHT - PAD_BOTTOM + 11}
             textAnchor="middle"
             className="tabular"
-            fill="var(--app-ink-faint)"
+            fill="var(--app-ink-muted)"
             fontSize="8"
           >
             {tick.label}
@@ -198,7 +198,7 @@ function EnvelopePlot({ ramp }: { ramp: Ramp }) {
           x={PAD_LEFT - 5}
           y={PAD_TOP + 4}
           textAnchor="end"
-          fill="var(--app-ink-faint)"
+          fill="var(--app-ink-muted)"
           fontSize="8"
         >
           vivid
@@ -207,7 +207,7 @@ function EnvelopePlot({ ramp }: { ramp: Ramp }) {
           x={PAD_LEFT - 5}
           y={HEIGHT - PAD_BOTTOM}
           textAnchor="end"
-          fill="var(--app-ink-faint)"
+          fill="var(--app-ink-muted)"
           fontSize="8"
         >
           grey

@@ -43,7 +43,13 @@ function Tool() {
   const { error, palette } = usePaletteSession()
   const [panel, setPanel] = useState<PanelName>('contrast')
   const [notice, setNotice] = useState<string | null>(null)
+  const [isReady, setIsReady] = useState(false)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Marks the point where handlers are attached and the controls will respond.
+  // Painted and interactive are not the same moment, and end-to-end tests need
+  // to know which one they are looking at.
+  useEffect(() => setIsReady(true), [])
 
   const announce = useCallback((message: string) => {
     setNotice(message)
@@ -58,7 +64,7 @@ function Tool() {
   const advice = palette.warnings.filter((w) => w.code !== 'SEED_HARMONIZED')
 
   return (
-    <div className="min-h-dvh">
+    <div className="min-h-dvh" data-ready={isReady ? 'true' : undefined}>
       <Header onCopied={announce} />
 
       <div className="mx-auto flex max-w-[1500px] flex-col lg:flex-row">

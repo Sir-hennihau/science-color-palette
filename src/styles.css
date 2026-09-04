@@ -19,7 +19,9 @@
   --app-line-strong: #c9c9cd;
   --app-ink: #18181b;
   --app-ink-muted: #6b6b73;
-  --app-ink-faint: #93939b;
+  /* Faint still has to clear 4.5:1 against the background: it labels hue
+     angles and axes at 11px, which is body text as far as WCAG is concerned. */
+  --app-ink-faint: #74747c;
   --app-inverse-bg: #18181b;
   --app-inverse-ink: #fafafa;
 
@@ -40,7 +42,7 @@
   --app-line-strong: #464646;
   --app-ink: #ededed;
   --app-ink-muted: #a0a0a0;
-  --app-ink-faint: #767676;
+  --app-ink-faint: #8a8a8a;
   --app-inverse-bg: #ededed;
   --app-inverse-ink: #121212;
 
