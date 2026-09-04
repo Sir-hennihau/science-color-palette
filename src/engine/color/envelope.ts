@@ -21,6 +21,7 @@ import {
   CUSP_HUE_QUANTUM,
   CUSP_REFINE_ITERATIONS,
   CUSP_SCAN_SAMPLES,
+  ENVELOPE_CUSP_SAMPLES,
   ENVELOPE_SAMPLES,
 } from '../constants.ts'
 import type { GamutId } from './gamut.ts'
@@ -48,6 +49,15 @@ export interface Envelope {
   readonly sampleL: readonly number[]
   /** Maximum chroma at each sample lightness. */
   readonly sampleC: readonly number[]
+  /**
+   * `bucket[k]` is the sample interval containing lightness `k / ENVELOPE_SAMPLES`.
+   *
+   * The samples are not evenly spaced — the cusp and the run above it are
+   * inserted — so arithmetic alone cannot locate the right interval. This turns
+   * the lookup back into a table read plus a step or two, which matters because
+   * the solver reads the envelope forty times per step per ramp.
+   */
+  readonly bucket: readonly number[]
 }
 
 /**
@@ -116,21 +126,43 @@ export function getEnvelope(h: number, gamut: GamutId): Envelope {
 
   const cusp = searchCusp(hue, gamut)
 
-  // A uniform grid plus the cusp itself. Including the cusp matters: it is the
-  // one point where the envelope has a kink, and interpolating across a kink is
-  // what would otherwise cost accuracy.
-  const sampleL: number[] = []
+  // A uniform grid, plus the cusp itself, plus a denser run from the cusp to
+  // white. Including the cusp matters: it is the one point where the envelope
+  // has a kink, and interpolating across a kink is what would otherwise cost
+  // accuracy. The denser run matters for the opposite reason — above the cusp
+  // the boundary is smooth but steeply convex, which is where a chord between
+  // grid points strays *outside* the gamut rather than inside it.
+  const raw: number[] = []
   for (let i = 0; i <= ENVELOPE_SAMPLES; i++) {
-    sampleL.push(i / ENVELOPE_SAMPLES)
+    raw.push(i / ENVELOPE_SAMPLES)
   }
-  if (cusp.l > 0 && cusp.l < 1) sampleL.push(cusp.l)
-  sampleL.sort((a, b) => a - b)
+  if (cusp.l > 0 && cusp.l < 1) {
+    raw.push(cusp.l)
+    for (let k = 1; k < ENVELOPE_CUSP_SAMPLES; k++) {
+      raw.push(cusp.l + (k * (1 - cusp.l)) / ENVELOPE_CUSP_SAMPLES)
+    }
+  }
+  raw.sort((a, b) => a - b)
+
+  // Distinct lightnesses only: an inserted sample can land on a grid point, and
+  // a zero-width interval would make interpolation meaningless.
+  const sampleL: number[] = []
+  for (const l of raw) {
+    if (sampleL.length === 0 || l - sampleL[sampleL.length - 1] > 1e-9) sampleL.push(l)
+  }
 
   const sampleC = sampleL.map((l) =>
     Math.abs(l - cusp.l) < 1e-12 ? cusp.c : cMaxExact(l, hue, gamut),
   )
 
-  const envelope: Envelope = { hue, gamut, cusp, sampleL, sampleC }
+  const bucket: number[] = []
+  for (let k = 0, i = 0; k <= ENVELOPE_SAMPLES; k++) {
+    const l = k / ENVELOPE_SAMPLES
+    while (i < sampleL.length - 2 && sampleL[i + 1] <= l) i++
+    bucket.push(i)
+  }
+
+  const envelope: Envelope = { hue, gamut, cusp, sampleL, sampleC, bucket }
   cache.set(key, envelope)
   return envelope
 }
@@ -193,21 +225,28 @@ function quantizeHue(h: number): number {
 /**
  * Maximum chroma at `l`, read off the sampled envelope.
  *
- * Linear interpolation of a concave boundary sits *below* the true surface, so
- * this errs toward colours that are certainly displayable. The pipeline still
- * verifies gamut membership at the end; this just makes that check almost never
- * need to do anything.
+ * Below the cusp the boundary is concave — scaling linear RGB by `k` scales
+ * OKLab by the cube root of `k`, so the gamut is a cone from black and
+ * `cMax(l)/l` can only fall as `l` rises. A chord therefore sits *below* the
+ * true surface, and interpolation errs toward colours that are certainly
+ * displayable.
+ *
+ * Above the cusp that reverses: the boundary is convex there, so a chord sits
+ * above it. {@link ENVELOPE_CUSP_SAMPLES} is what keeps that overshoot small
+ * enough to be irrelevant. The solver still checks gamut membership and falls
+ * back to the exact boundary, and the pipeline maps to gamut after that, so
+ * neither error can reach the output — but the sampling is what stops those
+ * backstops from ever having to fire.
  */
 export function cMaxAt(l: number, envelope: Envelope): number {
   if (l <= 0 || l >= 1) return 0
 
-  const { sampleL, sampleC } = envelope
+  const { sampleL, sampleC, bucket } = envelope
   const n = sampleL.length
 
-  // Sample spacing is uniform apart from the inserted cusp, so start from the
-  // arithmetic guess and step to the correct interval.
-  let i = Math.min(n - 2, Math.max(0, Math.floor(l * ENVELOPE_SAMPLES)))
-  while (i > 0 && sampleL[i] > l) i--
+  // The bucket table lands on the interval holding the grid point at or below
+  // `l`; anything inserted between there and `l` is a step or two away.
+  let i = bucket[Math.min(ENVELOPE_SAMPLES, Math.max(0, Math.floor(l * ENVELOPE_SAMPLES)))]
   while (i < n - 2 && sampleL[i + 1] < l) i++
 
   const span = sampleL[i + 1] - sampleL[i]

@@ -56,9 +56,16 @@ export interface SeedInput {
 /**
  * One pinned point on the lightness ladder.
  *
- * `lstar` anchors are aesthetic. `ratioOnWhite` / `ratioOnBlack` anchors are
- * *contracts*: they are converted to an exact luminance, so a step landing on
- * one is guaranteed to hit that contrast ratio.
+ * `lstar` anchors are aesthetic. The `ratio*` anchors are *contracts*: they are
+ * converted to an exact luminance, so a step landing on one is guaranteed to
+ * hit that contrast ratio.
+ *
+ * `ratioOnLightest` measures against the ramp's own shade 50 rather than
+ * against pure white, and is what the defaults use. Shade 50 is only about
+ * 1.06:1 against white, and that 6% is exactly the margin a promise made
+ * against white spends before it reaches the background a designer actually
+ * puts text on. A contract against the lightest shade implies the same one
+ * against white, since white is lighter; the reverse is not true.
  */
 export interface LadderAnchor {
   /** Position along the ramp, 0 = lightest, 1 = darkest. */
@@ -66,6 +73,7 @@ export interface LadderAnchor {
   lstar?: number
   ratioOnWhite?: number
   ratioOnBlack?: number
+  ratioOnLightest?: number
 }
 
 export interface LadderConfig {
@@ -129,10 +137,12 @@ export interface ResolvedLadder {
   contracts: LadderContract[]
 }
 
+export type LadderContractKind = 'ratioOnWhite' | 'ratioOnBlack' | 'ratioOnLightest'
+
 export interface LadderContract {
   /** Index of the step this contract applies to. */
   index: number
-  kind: 'ratioOnWhite' | 'ratioOnBlack'
+  kind: LadderContractKind
   /** The contrast ratio the step is solved to reach. */
   target: number
 }

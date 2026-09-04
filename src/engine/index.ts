@@ -15,6 +15,7 @@
 
 export { generatePalette } from './palette.ts'
 export { generateRamp, type RampSpec, type SeedInsert } from './ramp.ts'
+export { contractSurface, contractSurfaceName } from './report.ts'
 export { resolveConfig, parseConfig, serializeConfig, MAX_SEEDS } from './config.ts'
 
 // Ladder and step counts, for UI controls and labels.
@@ -95,11 +96,13 @@ export { NEUTRAL_MAX_CHROMA } from './neutrals.ts'
 export {
   EXPORT_FORMATS,
   exportCss,
+  exportCsv,
   exportDtcg,
   exportJson,
   exportPalette,
   exportTailwindTheme,
   type CssOptions,
+  type CsvOptions,
   type DtcgOptions,
   type ExportDescriptor,
   type ExportFormat,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DEFAULT_LIGHTEST_L,
   DEFAULT_STEPS,
   MAX_STEPS,
   MIN_STEPS,
@@ -11,8 +12,8 @@ import {
   warpLadderForSeed,
 } from '../ladder.ts'
 import { lstarFromY, yFromLstar } from '../color/space.ts'
-import { yForRatioOnWhite } from '../contrast/wcag.ts'
-import { MARGIN_Y } from '../constants.ts'
+import { yForRatioBelow, yForRatioOnWhite } from '../contrast/wcag.ts'
+import { LIGHTEST_Y_MARGIN, MARGIN_Y } from '../constants.ts'
 import { EngineError } from '../types.ts'
 
 const TAILWIND_LABELS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
@@ -66,28 +67,55 @@ describe('ladder shape', () => {
   it('hits the contrast anchors exactly at the default step count', () => {
     const ladder = buildLadder()
 
-    // Shades 500, 600 and 700 are the contract steps.
+    // Shades 500, 600 and 700 are the contract steps, and they are measured
+    // against the ramp's own lightest shade rather than against pure white.
     expect(ladder.contracts).toEqual([
-      { index: 5, kind: 'ratioOnWhite', target: 3 },
-      { index: 6, kind: 'ratioOnWhite', target: 4.5 },
-      { index: 7, kind: 'ratioOnWhite', target: 7 },
+      { index: 5, kind: 'ratioOnLightest', target: 3 },
+      { index: 6, kind: 'ratioOnLightest', target: 4.5 },
+      { index: 7, kind: 'ratioOnLightest', target: 7 },
     ])
 
+    const lightestY = yFromLstar(DEFAULT_LIGHTEST_L) - LIGHTEST_Y_MARGIN
+
     for (const contract of ladder.contracts) {
-      const expected = yForRatioOnWhite(contract.target) - MARGIN_Y
+      const expected = yForRatioBelow(lightestY, contract.target) - MARGIN_Y
       expect(ladder.yTargets[contract.index]).toBeCloseTo(expected, 12)
     }
   })
 
   it('biases contract luminances toward the safe side of the threshold', () => {
     const ladder = buildLadder()
+    const lightestY = yFromLstar(DEFAULT_LIGHTEST_L)
+
     for (const contract of ladder.contracts) {
       // Darker than strictly required, so 8-bit rounding cannot drop the
       // shipped colour below its promised ratio.
       expect(ladder.yTargets[contract.index]).toBeLessThan(
+        yForRatioBelow(lightestY, contract.target),
+      )
+    }
+  })
+
+  it('anchoring on the lightest shade implies the same promise on white', () => {
+    // White is lighter than shade 50, so it can only give more contrast. This
+    // is why the switch costs nothing: every guarantee that held before still
+    // holds, and the one that matters — against the background these colours
+    // are actually used on — now holds too.
+    const ladder = buildLadder()
+    for (const contract of ladder.contracts) {
+      expect(ladder.yTargets[contract.index]).toBeLessThan(
         yForRatioOnWhite(contract.target),
       )
     }
+  })
+
+  it('refuses a contract the background cannot support', () => {
+    // 30:1 on a shade-50 background is not a tight fit but an impossibility;
+    // clamping it would ship a promise that cannot hold.
+    expect(() => buildLadder({ anchors: [{ t: 0.5, ratioOnLightest: 30 }] })).toThrow(
+      EngineError,
+    )
+    expect(() => buildLadder({ anchors: [{ t: 0.5, ratioOnWhite: 25 }] })).toThrow(EngineError)
   })
 
   it('refines rather than reshuffles when steps are added', () => {

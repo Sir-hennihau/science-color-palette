@@ -6,8 +6,9 @@
  * depends on relative luminance alone, pinning a step's luminance pins its
  * contrast exactly: step 6 of the blues and step 6 of the yellows are equally
  * readable on white, even though they look nothing alike. That shared-ladder
- * property is what makes guarantees like "five steps apart is always readable"
- * true rather than approximately true.
+ * property is what makes a guarantee like "six steps apart clears 4.5:1" true
+ * rather than approximately true. The number itself is always measured on the
+ * shipped hexes rather than assumed; `palette.test.ts` pins it.
  *
  * The ladder is one continuous monotone curve through a handful of anchors,
  * sampled at however many steps the user asked for. Three of those anchors are
@@ -19,10 +20,11 @@ import {
   LADDER_FEASIBLE_GAP,
   LADDER_MIN_GAP,
   LADDER_STRAIN_L,
+  LIGHTEST_Y_MARGIN,
   MARGIN_Y,
 } from './constants.ts'
 import { lstarFromY, yFromLstar } from './color/space.ts'
-import { yForRatioOnBlack, yForRatioOnWhite } from './contrast/wcag.ts'
+import { yForRatioBelow, yForRatioOnBlack } from './contrast/wcag.ts'
 import { monotoneCubic, type Point } from './curves/pchip.ts'
 import {
   EngineError,
@@ -44,16 +46,25 @@ export const DEFAULT_DARKEST_L = 13
  *
  * The three contrast anchors sit at 0.5, 0.6 and 0.7 so that an 11-step ramp —
  * whose steps land on exactly those positions — gets shades 500, 600 and 700
- * guaranteed at 3:1, 4.5:1 and 7:1 on white. The remaining anchors shape the
- * curve: real-world ramps compress toward white rather than stepping evenly,
- * which is what keeps the light end from looking chunky.
+ * guaranteed at 3:1, 4.5:1 and 7:1. The remaining anchors shape the curve:
+ * real-world ramps compress toward white rather than stepping evenly, which is
+ * what keeps the light end from looking chunky.
+ *
+ * Those three are measured against the ramp's own shade 50, not against pure
+ * white. Anchoring on white looks stricter and is in fact weaker: shade 50 sits
+ * at about 1.06:1 against white, so a step solved to exactly 4.5:1 on white
+ * lands at 4.30:1 on the lightest shade — and `bg-*-50` is the background these
+ * colours are actually used on. Measured on the generated palette, moving the
+ * anchors buys a full step on all three promises (4.5:1 at six steps apart
+ * rather than seven) for a shift of about 1.5 L*. A contract against the
+ * lightest shade implies the same one against white, so nothing is given up.
  */
 const DEFAULT_INTERIOR_ANCHORS: readonly LadderAnchor[] = [
   { t: 0.1, lstar: 94 },
   { t: 0.3, lstar: 82 },
-  { t: 0.5, ratioOnWhite: 3 },
-  { t: 0.6, ratioOnWhite: 4.5 },
-  { t: 0.7, ratioOnWhite: 7 },
+  { t: 0.5, ratioOnLightest: 3 },
+  { t: 0.6, ratioOnLightest: 4.5 },
+  { t: 0.7, ratioOnLightest: 7 },
   { t: 0.9, lstar: 21 },
 ]
 
@@ -81,6 +92,11 @@ function resolveAnchors(cfg: LadderConfig): ResolvedAnchor[] {
   const darkestL = cfg.darkestL ?? DEFAULT_DARKEST_L
   const interior = cfg.anchors ?? DEFAULT_INTERIOR_ANCHORS
 
+  // What the lightest shade will be worth once it has itself been rounded to 8
+  // bits. Pessimistic on purpose: a contract measured against it has two
+  // quantised ends, not one.
+  const lightestY = Math.max(0, yFromLstar(lightestL) - LIGHTEST_Y_MARGIN)
+
   const resolved: ResolvedAnchor[] = [{ t: 0, lstar: lightestL }]
 
   for (const anchor of interior) {
@@ -91,7 +107,7 @@ function resolveAnchors(cfg: LadderConfig): ResolvedAnchor[] {
         { t: anchor.t },
       )
     }
-    resolved.push(resolveAnchor(anchor))
+    resolved.push(resolveAnchor(anchor, lightestY))
   }
 
   resolved.push({ t: 1, lstar: darkestL })
@@ -113,9 +129,18 @@ function resolveAnchors(cfg: LadderConfig): ResolvedAnchor[] {
   return resolved
 }
 
-function resolveAnchor(anchor: LadderAnchor): ResolvedAnchor {
+function resolveAnchor(anchor: LadderAnchor, lightestY: number): ResolvedAnchor {
+  if (anchor.ratioOnLightest !== undefined) {
+    const y = below(lightestY, anchor.ratioOnLightest, anchor.t, 'the lightest shade')
+    return {
+      t: anchor.t,
+      lstar: lstarFromY(y),
+      contract: { kind: 'ratioOnLightest', target: anchor.ratioOnLightest, y },
+    }
+  }
+
   if (anchor.ratioOnWhite !== undefined) {
-    const y = yForRatioOnWhite(anchor.ratioOnWhite) - MARGIN_Y
+    const y = below(1, anchor.ratioOnWhite, anchor.t, 'white')
     return {
       t: anchor.t,
       lstar: lstarFromY(y),
@@ -125,6 +150,14 @@ function resolveAnchor(anchor: LadderAnchor): ResolvedAnchor {
 
   if (anchor.ratioOnBlack !== undefined) {
     const y = yForRatioOnBlack(anchor.ratioOnBlack) + MARGIN_Y
+    if (y > 1) {
+      throw new EngineError(
+        'INVALID_CONFIG',
+        `Ladder anchor at t=${anchor.t} asks for ${anchor.ratioOnBlack}:1 on black, which is ` +
+          'more contrast than any colour can reach.',
+        { t: anchor.t, ratio: anchor.ratioOnBlack },
+      )
+    }
     return {
       t: anchor.t,
       lstar: lstarFromY(y),
@@ -135,12 +168,36 @@ function resolveAnchor(anchor: LadderAnchor): ResolvedAnchor {
   if (anchor.lstar === undefined) {
     throw new EngineError(
       'INVALID_CONFIG',
-      `Ladder anchor at t=${anchor.t} needs one of lstar, ratioOnWhite or ratioOnBlack.`,
+      `Ladder anchor at t=${anchor.t} needs one of lstar, ratioOnLightest, ratioOnWhite ` +
+        'or ratioOnBlack.',
       { t: anchor.t },
     )
   }
 
   return { t: anchor.t, lstar: anchor.lstar }
+}
+
+/**
+ * Luminance for a contract that must sit `ratio` below `reference`.
+ *
+ * Biased by {@link MARGIN_Y} toward the safe side. A negative result means the
+ * reference is not light enough to support the ratio at all — nothing is darker
+ * than black — which is a configuration error rather than something to clamp
+ * silently into a promise that cannot hold.
+ */
+function below(reference: number, ratio: number, t: number, surface: string): number {
+  const y = yForRatioBelow(reference, ratio) - MARGIN_Y
+
+  if (y < 0) {
+    throw new EngineError(
+      'INVALID_CONFIG',
+      `Ladder anchor at t=${t} asks for ${ratio}:1 against ${surface}, which is more ` +
+        'contrast than that background can give — even black falls short.',
+      { t, ratio },
+    )
+  }
+
+  return y
 }
 
 /**

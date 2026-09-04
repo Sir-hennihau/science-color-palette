@@ -34,9 +34,12 @@ on. Pin a step's luminance and you have pinned its contrast against any
 background exactly.
 
 **Every ramp climbs the same staircase.** Because the luminance of step 6 is the
-same whether it is blue or yellow, shade 600 is readable on white in every hue.
-That is what makes advice like "six steps apart clears 4.5:1" true rather than
-roughly true, and it is what the tool reports. For contrast, the reference
+same whether it is blue or yellow, shade 600 is readable in every hue. That is
+what makes advice like "six steps apart clears 4.5:1" true rather than roughly
+true, and it is what the tool reports — measured on the shipped hex values, and
+against the palette's own shade 50 rather than against pure white. Shade 50 is
+only about 1.06:1 against white, so a promise made against white quietly spends
+6% of itself before it reaches the background anyone actually puts text on. For contrast, the reference
 palettes are inconsistent here: Tailwind's yellow-500 sits 15 L\* above its
 blue-500, so its yellow-500 fails 3:1 on white while blue-500 passes, despite
 the shared number implying they are interchangeable.

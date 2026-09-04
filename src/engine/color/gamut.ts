@@ -8,7 +8,7 @@
  * change rather than a rewrite.
  */
 
-import { GAMUT_EPS } from '../constants.ts'
+import { GAMUT_EPS, JND_EOK } from '../constants.ts'
 import type { LinRgb, Oklch } from './space.ts'
 import { deltaEOK, oklchToLinear, linearToSrgb, oklabToOklch, linearToOklab } from './space.ts'
 
@@ -56,16 +56,22 @@ export function linearInGamut(lch: Oklch, gamut: GamutId): LinRgb {
   return def.fromLinearSrgb ? applyMatrix(def.fromLinearSrgb, lin) : lin
 }
 
-/** Whether `lch` is displayable in `gamut`. */
+/**
+ * Whether `lch` is displayable in `gamut`.
+ *
+ * The tolerance scales with the colour's own magnitude — see {@link GAMUT_EPS}
+ * for why a fixed slack silently fails near black.
+ */
 export function inGamut(lch: Oklch, gamut: GamutId): boolean {
   const c = linearInGamut(lch, gamut)
+  const eps = GAMUT_EPS * Math.max(Math.abs(c.r), Math.abs(c.g), Math.abs(c.b))
   return (
-    c.r >= -GAMUT_EPS &&
-    c.r <= 1 + GAMUT_EPS &&
-    c.g >= -GAMUT_EPS &&
-    c.g <= 1 + GAMUT_EPS &&
-    c.b >= -GAMUT_EPS &&
-    c.b <= 1 + GAMUT_EPS
+    c.r >= -eps &&
+    c.r <= 1 + eps &&
+    c.g >= -eps &&
+    c.g <= 1 + eps &&
+    c.b >= -eps &&
+    c.b <= 1 + eps
   )
 }
 
@@ -102,8 +108,6 @@ function invert(m: Matrix3): Matrix3 {
   ]
 }
 
-/** Just-noticeable difference used by the CSS Color 4 mapping algorithm. */
-const JND = 0.02
 const MAP_EPSILON = 0.0001
 
 /**
@@ -126,7 +130,7 @@ export function mapToGamut(lch: Oklch, gamut: GamutId): Oklch {
   while (end - start > MAP_EPSILON) {
     candidate.c = (start + end) / 2
     clipped = clipToGamut(candidate, gamut)
-    if (inGamut(candidate, gamut) || deltaEOK(candidate, clipped) <= JND) {
+    if (inGamut(candidate, gamut) || deltaEOK(candidate, clipped) <= JND_EOK) {
       start = candidate.c
     } else {
       end = candidate.c

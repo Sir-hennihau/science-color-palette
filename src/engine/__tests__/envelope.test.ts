@@ -10,7 +10,14 @@ import {
   formatHex,
 } from 'culori/fn'
 
-import { cMaxExact, cMaxTriangle, clearEnvelopeCache, findCusp } from '../color/envelope.ts'
+import {
+  cMaxAt,
+  cMaxExact,
+  cMaxTriangle,
+  clearEnvelopeCache,
+  findCusp,
+  getEnvelope,
+} from '../color/envelope.ts'
 import { inGamut, mapToGamut } from '../color/gamut.ts'
 import { deltaEOK, oklchFromHex, oklchToRgb, quantize, rgb8ToHex } from '../color/space.ts'
 import { CMAX_SEARCH_LIMIT } from '../constants.ts'
@@ -140,6 +147,48 @@ describe('chroma envelope', () => {
     expect(cMaxTriangle(1, cusp)).toBe(0)
     expect(cMaxExact(0, 250, 'srgb')).toBe(0)
     expect(cMaxExact(1, 250, 'srgb')).toBe(0)
+  })
+})
+
+describe('the sampled envelope', () => {
+  it('does not overstate the boundary, above the cusp as well as below', () => {
+    // Below the cusp the boundary is concave, so a chord between samples sits
+    // safely under it. Above the cusp it is convex and the chord sits over it —
+    // at hue 110 the uniform grid alone overshoots by 0.0119 chroma at
+    // lightness 0.975, which is enough to ask the solver for a colour that does
+    // not exist. The extra samples between cusp and white are what keep this
+    // small.
+    let worst = { hue: 0, l: 0, over: 0 }
+
+    for (let hue = 0; hue < 360; hue += 3) {
+      const envelope = getEnvelope(hue, 'srgb')
+      for (let i = 1; i < 200; i++) {
+        const l = i / 200
+        const over = cMaxAt(l, envelope) - cMaxExact(l, hue, 'srgb')
+        if (over > worst.over) worst = { hue, l, over }
+      }
+    }
+
+    expect(worst.over, `hue ${worst.hue} at L ${worst.l.toFixed(3)}`).toBeLessThan(0.004)
+  })
+
+  it('respects the cone bound near black', () => {
+    // Scaling linear RGB by k scales OKLab by the cube root of k, so the gamut
+    // is a cone from black: chroma over lightness can only fall as lightness
+    // rises, and the cusp sets the ceiling. This used to fail badly — a fixed
+    // 1e-6 gamut tolerance is larger than the channel values themselves down
+    // here, and cMaxExact returned 0.0219 at lightness 0.0005 against a true
+    // ceiling of 0.0002.
+    for (const hue of [0, 60, 120, 200, 264, 320]) {
+      const cusp = findCusp(hue, 'srgb')
+      const slope = cusp.c / cusp.l
+
+      for (const l of [0.0005, 0.002, 0.005, 0.0156, 0.031, 0.0625]) {
+        expect(cMaxExact(l, hue, 'srgb'), `hue ${hue} at L ${l}`).toBeLessThanOrEqual(
+          slope * l * 1.02,
+        )
+      }
+    }
   })
 })
 

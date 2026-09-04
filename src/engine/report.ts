@@ -12,6 +12,7 @@ import { WCAG_THRESHOLDS, wcagContrastHex } from './contrast/wcag.ts'
 import type {
   EngineWarning,
   LadderContract,
+  LadderContractKind,
   LevelLabels,
   PairEntry,
   RampReport,
@@ -25,7 +26,8 @@ import type {
  * This is what turns the shared ladder into advice a designer can use without
  * checking anything: "six steps apart always clears 4.5:1". The minimum is
  * taken over every pair at that distance, so the statement holds everywhere in
- * the ramp rather than on average.
+ * the ramp rather than on average — and it is a genuine minimum, over both text
+ * polarities for APCA, not just dark-on-light.
  */
 export function buildPairTable(swatches: Swatch[]): PairEntry[] {
   const table: PairEntry[] = []
@@ -45,7 +47,14 @@ export function buildPairTable(swatches: Swatch[]): PairEntry[] {
         pair = [i, i + distance]
       }
 
-      minApcaLc = Math.min(minApcaLc, Math.abs(apcaLc(b.hex, a.hex)))
+      // APCA's two polarities use different exponents, so a pair scores
+      // differently as dark-text-on-light than as light-text-on-dark — by up to
+      // 2.3 Lc across this ladder. A minimum has to cover both.
+      minApcaLc = Math.min(
+        minApcaLc,
+        Math.abs(apcaLc(b.hex, a.hex)),
+        Math.abs(apcaLc(a.hex, b.hex)),
+      )
     }
 
     table.push({
@@ -80,20 +89,41 @@ function firstMeeting(swatches: Swatch[], background: string): LevelLabels {
 }
 
 /**
+ * The colour a contract is measured against.
+ *
+ * `ratioOnLightest` is the interesting one: its background is the ramp's own
+ * shade 50, which is a solved colour rather than a constant, so the comparison
+ * moves with the ramp.
+ */
+export function contractSurface(kind: LadderContractKind, lightestHex: string): string {
+  if (kind === 'ratioOnWhite') return '#ffffff'
+  if (kind === 'ratioOnBlack') return '#000000'
+  return lightestHex
+}
+
+/** How a contract's background reads in a sentence. */
+export function contractSurfaceName(kind: LadderContractKind, lightestLabel: number): string {
+  if (kind === 'ratioOnWhite') return 'white'
+  if (kind === 'ratioOnBlack') return 'black'
+  return `shade ${lightestLabel}`
+}
+
+/**
  * Verify a step's contract against the colour that shipped.
  *
  * In `harmonize` mode these always hold — the ladder is built from them. In
  * `exact` mode they may not, because the user asked for their colour to be kept
  * instead. Either way the measurement is real.
  */
-export function verifyGuarantees(swatch: Swatch, contracts: LadderContract[]): StepGuarantee[] {
+export function verifyGuarantees(
+  swatch: Swatch,
+  contracts: LadderContract[],
+  lightestHex: string,
+): StepGuarantee[] {
   return contracts
     .filter((contract) => contract.index === swatch.index)
     .map((contract) => {
-      const actual =
-        contract.kind === 'ratioOnWhite'
-          ? wcagContrastHex(swatch.hex, '#ffffff')
-          : wcagContrastHex(swatch.hex, '#000000')
+      const actual = wcagContrastHex(swatch.hex, contractSurface(contract.kind, lightestHex))
 
       return {
         kind: contract.kind,
@@ -126,7 +156,7 @@ export function buildRampReport(options: BuildReportOptions): RampReport {
 
   for (const broken of brokenGuarantees) {
     const alternative = firstSatisfying(swatches, broken.kind, broken.target)
-    const surface = broken.kind === 'ratioOnWhite' ? 'white' : 'black'
+    const surface = contractSurfaceName(broken.kind, swatches[0].label)
 
     warnings.push({
       code: 'GUARANTEE_NOT_MET',
@@ -158,13 +188,13 @@ export function buildRampReport(options: BuildReportOptions): RampReport {
 /** Nearest shade label that does reach `target` against the relevant surface. */
 function firstSatisfying(
   swatches: Swatch[],
-  kind: LadderContract['kind'],
+  kind: LadderContractKind,
   target: number,
 ): number | null {
-  const background = kind === 'ratioOnWhite' ? '#ffffff' : '#000000'
-  // On white, darker shades pass, so scan toward the dark end; on black the
-  // reverse.
-  const ordered = kind === 'ratioOnWhite' ? swatches : [...swatches].reverse()
+  const background = contractSurface(kind, swatches[0].hex)
+  // Against a light background, darker shades pass, so scan toward the dark
+  // end; against black the reverse.
+  const ordered = kind === 'ratioOnBlack' ? [...swatches].reverse() : swatches
 
   for (const swatch of ordered) {
     if (wcagContrastHex(swatch.hex, background) >= target) return swatch.label

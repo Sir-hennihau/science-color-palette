@@ -1,6 +1,7 @@
+import { WarningMark } from './StatusMarks.tsx'
 import { usePaletteSession } from '../lib/palette-session.tsx'
 import { copyText } from '../lib/browser.ts'
-import type { Ramp, Swatch } from '../engine/index.ts'
+import { WCAG_THRESHOLDS, type Ramp, type ResolvedLadder, type Swatch } from '../engine/index.ts'
 
 /**
  * The palette itself, and the first thing on screen.
@@ -23,12 +24,77 @@ export function PaletteBoard({ onCopied }: { onCopied: (message: string) => void
 
   return (
     <div className="flex flex-col gap-8">
+      <ContractLegend ladder={palette.resolved.ladder} />
       <RampGroup ramps={families} onCopied={onCopied} />
       {neutrals.length > 0 && (
         <RampGroup ramps={neutrals} heading="Greys" onCopied={onCopied} />
       )}
     </div>
   )
+}
+
+/**
+ * Which columns carry a promise, marked on the board itself.
+ *
+ * The most useful thing this tool knows is "which shade is safe for body text",
+ * and it used to be a table two screens further down. Because every ramp climbs
+ * the same scale, the answer is a *column* rather than a colour — so one legend
+ * above the board marks it for every family at once, and the shade numbers stop
+ * being arbitrary the moment you see which three are load-bearing.
+ *
+ * Driven from the ladder's own contracts, so a step count where none of them
+ * land on a shade correctly shows nothing rather than a comfortable fiction.
+ */
+function ContractLegend({ ladder }: { ladder: ResolvedLadder }) {
+  const contracts = new Map(ladder.contracts.map((contract) => [contract.index, contract]))
+  if (contracts.size === 0) return null
+
+  const sentence = ladder.contracts
+    .map((contract) => `${ladder.labels[contract.index]} ${useFor(contract.target)}`)
+    .join(' · ')
+
+  return (
+    <div>
+      {/* Narrow screens cannot fit a caption under a column, so the same fact
+          is stated as a sentence — and it carries the accessible name at every
+          width, since a grid of loose words reads poorly aloud. */}
+      <p className="border-b border-line pb-2 text-[12px] text-ink-muted sm:sr-only">
+        <span className="text-ink">Guaranteed on white and on shade {ladder.labels[0]}:</span>{' '}
+        <span className="tabular">{sentence}</span>
+      </p>
+
+      <div
+        aria-hidden="true"
+        className="hidden grid-cols-[repeat(var(--steps),minmax(0,1fr))] gap-px border-b border-line pb-1.5 sm:grid"
+        style={{ ['--steps' as string]: ladder.steps }}
+      >
+        {/* Only the marked columns carry anything. Every swatch prints its own
+            shade number a few pixels below, so repeating all eleven here would
+            be a ruler nobody needs beside a ruler they already have. */}
+        {ladder.labels.map((label, index) => {
+          const contract = contracts.get(index)
+          if (!contract) return <div key={label} />
+
+          return (
+            <div key={label} className="flex flex-col gap-1">
+              <span className="tabular text-[10px] font-medium leading-none">{label}</span>
+              <span className="h-0.5 w-full bg-ink" />
+              <span className="text-[10px] leading-tight text-ink-muted">
+                {useFor(contract.target)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** What a contract ratio is good for, in the fewest words that stay true. */
+function useFor(target: number): string {
+  if (target >= WCAG_THRESHOLDS.aaa) return 'body AAA'
+  if (target >= WCAG_THRESHOLDS.aa) return 'body text'
+  return 'large text'
 }
 
 function RampGroup({
@@ -193,12 +259,3 @@ function SwatchButton({
   )
 }
 
-function WarningMark() {
-  return (
-    <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 shrink-0" aria-hidden="true">
-      <path d="M6 1 11.2 10.5H0.8z" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M6 4.4v2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <circle cx="6" cy="8.7" r="0.7" fill="currentColor" />
-    </svg>
-  )
-}

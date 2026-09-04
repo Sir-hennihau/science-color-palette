@@ -23,9 +23,20 @@ import type { Ramp, ResolvedConfig } from './types.ts'
 /**
  * Chroma ceiling at full tint strength.
  *
- * Comparable to the chroma Material gives its neutral palettes, and about the
- * point where a grey starts to read as "warm" or "cool" rather than as a
- * colour in its own right.
+ * About the point where a grey starts to read as "warm" or "cool" rather than
+ * as a colour in its own right. For scale, Tailwind's tinted neutrals reach
+ * 0.032 (gray) and 0.040 (slate) at their darkest, and its near-neutral stone
+ * reaches 0.010.
+ *
+ * Note what the *default* tint strength of 0.5 means: a ceiling of 0.014, which
+ * is below the 0.02 just-noticeable difference, so the default neutral is a
+ * grey that merely avoids looking dead rather than one that visibly belongs to
+ * the primary. Turning the tint up to 1 is what makes the relationship legible.
+ *
+ * The reference ramps also *raise* their chroma toward the dark end rather than
+ * holding it flat as this one does. That is a deliberate difference, for the
+ * reason in the module comment above: a flat ceiling is what makes the tint
+ * behave the same way at every hue.
  */
 export const NEUTRAL_MAX_CHROMA = 0.028
 

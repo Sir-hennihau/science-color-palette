@@ -2,8 +2,9 @@
  * The orchestrator: seeds in, complete palette out.
  */
 
+import { JND_EOK } from './constants.ts'
 import { resolveConfig } from './config.ts'
-import { hueDistance } from './color/space.ts'
+import { deltaEOK, hueDistance } from './color/space.ts'
 import { chromaCeilingCurve, chromaCurve } from './curves/chroma.ts'
 import { hueCurve } from './curves/hue.ts'
 import { generateNeutralRamp } from './neutrals.ts'
@@ -49,8 +50,6 @@ export function generatePalette(config: PaletteConfig): Palette {
     resolved.families,
   )
 
-  warnings.push(...crowdingWarnings(families, resolved))
-
   // A colourless seed cannot anchor a hue, but it is still a colour someone
   // asked for — and in exact mode it has to ship. So it gets a greyscale ramp
   // of its own rather than being dropped from the palette.
@@ -77,6 +76,9 @@ export function generatePalette(config: PaletteConfig): Palette {
   }
 
   ensureUniqueNames(ramps)
+
+  warnings.push(...crowdingWarnings(families, resolved))
+  warnings.push(...mergeWarnings(ramps))
 
   const sharedPairTable = combinePairTables(ramps)
 
@@ -149,11 +151,18 @@ function buildFamilyRamp(family: SpectrumFamily, resolved: ResolvedConfig): Ramp
 }
 
 /**
- * Warn when the spectrum is packed tighter than the eye can separate.
+ * Warn when the seeds have squeezed the wheel shut.
  *
- * Sixteen families around the circle leaves 22 degrees between neighbours,
- * which is not much; below about 18 they start reading as shades of each other
- * and the palette gains rows without gaining colours.
+ * This is a question about *input*: sixteen families around the circle leaves
+ * 22 degrees between neighbours, which is not much, and two seeds close
+ * together can push a gap below that. Below about 18 degrees they start reading
+ * as shades of each other and the palette gains rows without gaining colours.
+ *
+ * Deliberately still an angle. It describes where the colours were asked to go,
+ * which is what the person can act on. What the colours actually came out like
+ * is a different question, and {@link mergeWarnings} measures that instead —
+ * the two disagree more often than you would expect, because equal steps in
+ * OKLCH hue are not equal perceptual steps.
  */
 function crowdingWarnings(
   families: SpectrumFamily[],
@@ -177,6 +186,50 @@ function crowdingWarnings(
         `Two families are only ${tightest.toFixed(0)} degrees apart, so they will read as the ` +
         'same colour. Ask for fewer families, or move your colours further apart on the wheel.',
       context: { families: resolved.families, separation: Number(tightest.toFixed(1)) },
+    },
+  ]
+}
+
+/**
+ * Warn when the light end has fewer colours than it has rows.
+ *
+ * Measured on the generated colours, not inferred. The lightest shades are held
+ * to a small absolute chroma — that is what gives curated palettes their barely
+ * tinted 50s and 100s — so every hue is squeezed into the same narrow disc up
+ * there and they run out of room to differ long before mid-ramp does. At ten
+ * families half the neighbouring pairs are already within a just-noticeable
+ * difference at shade 100; at sixteen almost all of them are.
+ *
+ * The threshold is "most of them", so the default palette stays quiet and the
+ * warning means something when it does fire.
+ */
+function mergeWarnings(ramps: Ramp[]): EngineWarning[] {
+  const families = ramps.filter((ramp) => ramp.role !== 'neutral' && ramp.hue !== null)
+
+  // Index 1, not 0: shade 50 is nearly white in every hue by design, so it
+  // would report every palette as merged and say nothing.
+  const step = 1
+  if (families.length < 3 || families[0].swatches.length <= step) return []
+
+  const merged = families.filter((ramp, i) => {
+    const next = families[(i + 1) % families.length]
+    return (
+      next !== ramp &&
+      deltaEOK(ramp.swatches[step].oklch, next.swatches[step].oklch) < JND_EOK
+    )
+  }).length
+
+  if (merged <= families.length / 2) return []
+
+  return [
+    {
+      code: 'LIGHT_SHADES_MERGED',
+      message:
+        `${merged} of your ${families.length} families are indistinguishable from their ` +
+        `neighbour at shade ${families[0].swatches[step].label}. The lightest shades are ` +
+        'deliberately barely tinted, so they run out of room to differ before the rest of the ' +
+        'ramp does — at this many families the light end has fewer colours than rows.',
+      context: { families: families.length, merged },
     },
   ]
 }

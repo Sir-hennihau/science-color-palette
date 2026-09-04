@@ -1,3 +1,4 @@
+import { contractSurfaceName } from '../engine/index.ts'
 import { usePaletteSession } from '../lib/palette-session.tsx'
 import { copyText } from '../lib/browser.ts'
 import { PairReadout, apcaDescription } from './ContrastPanel.tsx'
@@ -85,8 +86,8 @@ export function SwatchInspector({ onCopied }: { onCopied: (message: string) => v
           {swatch.guarantees.map((guarantee, i) => (
             <p key={i} className={guarantee.met ? '' : 'text-warn'}>
               {guarantee.met ? 'Meets' : 'Falls short of'} the {guarantee.target}:1 this position
-              guarantees {guarantee.kind === 'ratioOnWhite' ? 'on white' : 'on black'} — measured{' '}
-              <span className="tabular">{guarantee.actual.toFixed(2)}:1</span>.
+              guarantees on {contractSurfaceName(guarantee.kind, ramp.swatches[0].label)} —
+              measured <span className="tabular">{guarantee.actual.toFixed(2)}:1</span>.
             </p>
           ))}
 

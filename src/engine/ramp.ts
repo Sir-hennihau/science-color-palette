@@ -19,7 +19,7 @@ import { apcaLc } from './contrast/apca.ts'
 import { wcagContrastHex } from './contrast/wcag.ts'
 import type { Curve } from './curves/pchip.ts'
 import type { HueCurve } from './curves/hue.ts'
-import { buildRampReport, verifyGuarantees } from './report.ts'
+import { buildRampReport, contractSurface, verifyGuarantees } from './report.ts'
 import { solveStep } from './solve.ts'
 import type {
   EngineWarning,
@@ -66,6 +66,9 @@ export function generateRamp(spec: RampSpec): Ramp {
 
   const solved: Array<{ oklch: Oklch; hex: string; gamutMapped: boolean; isSeed: boolean }> = []
 
+  // Solved light-to-dark, which matters: a `ratioOnLightest` contract on a
+  // mid-ramp step is measured against shade 50, so shade 50 has to exist by the
+  // time that step is solved. Step 0 is always first.
   for (let i = 0; i < ladder.steps; i++) {
     if (spec.seedInsert && spec.seedInsert.index === i) {
       // The seed bypasses the solver entirely. This is the promise of `exact`
@@ -80,7 +83,7 @@ export function generateRamp(spec: RampSpec): Ramp {
       continue
     }
 
-    solved.push(solveForStep(spec, i))
+    solved.push(solveForStep(spec, i, solved[0]?.hex ?? '#ffffff'))
   }
 
   const lightestHex = solved[0].hex
@@ -114,7 +117,7 @@ export function generateRamp(spec: RampSpec): Ramp {
       guarantees: [],
     }
 
-    swatch.guarantees = verifyGuarantees(swatch, ladder.contracts)
+    swatch.guarantees = verifyGuarantees(swatch, ladder.contracts, lightestHex)
     return swatch
   })
 
@@ -145,6 +148,7 @@ export function generateRamp(spec: RampSpec): Ramp {
 function solveForStep(
   spec: RampSpec,
   index: number,
+  lightestHex: string,
 ): { oklch: Oklch; hex: string; gamutMapped: boolean; isSeed: boolean } {
   const { ladder } = spec
   const t = ladder.t[index]
@@ -158,7 +162,10 @@ function solveForStep(
   let attempt = 0
   let result = solveAndQuantize(yTarget, hue, fraction, ceiling, spec)
 
-  while (attempt < GUARANTEE_NUDGE_ATTEMPTS && !contractsHold(result.hex, contracts)) {
+  while (
+    attempt < GUARANTEE_NUDGE_ATTEMPTS &&
+    !contractsHold(result.hex, contracts, lightestHex)
+  ) {
     attempt++
     yTarget = nudge(yTarget, contracts, attempt)
     result = solveAndQuantize(yTarget, hue, fraction, ceiling, spec)
@@ -195,19 +202,24 @@ function solveAndQuantize(
   }
 }
 
-function contractsHold(hex: string, contracts: LadderContract[]): boolean {
-  return contracts.every((contract) => {
-    const background = contract.kind === 'ratioOnWhite' ? '#ffffff' : '#000000'
-    return wcagContrastHex(hex, background) >= contract.target
-  })
+function contractsHold(
+  hex: string,
+  contracts: LadderContract[],
+  lightestHex: string,
+): boolean {
+  return contracts.every(
+    (contract) =>
+      wcagContrastHex(hex, contractSurface(contract.kind, lightestHex)) >= contract.target,
+  )
 }
 
 /** Push a luminance target further into the safe side of its contracts. */
 function nudge(yTarget: number, contracts: LadderContract[], attempt: number): number {
   const step = GUARANTEE_NUDGE_Y * attempt
-  // Contracts against white want a darker colour; against black, lighter. A
-  // step carrying both is satisfied by whichever direction is requested first.
-  const wantsDarker = contracts.some((c) => c.kind === 'ratioOnWhite')
+  // Contracts against a light background want a darker colour; against black,
+  // lighter. A step carrying both is satisfied by whichever direction is
+  // requested first.
+  const wantsDarker = contracts.some((c) => c.kind !== 'ratioOnBlack')
   return Math.min(1, Math.max(0, yTarget + (wantsDarker ? -step : step)))
 }
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { generatePalette } from '../palette.ts'
 import { EXPORT_FORMATS, exportPalette } from '../export/index.ts'
 import { exportCss } from '../export/css.ts'
+import { exportCsv } from '../export/csv.ts'
 import { exportDtcg } from '../export/dtcg.ts'
 import { exportJson } from '../export/json.ts'
 import { exportTailwindTheme } from '../export/tailwind.ts'
@@ -163,6 +164,75 @@ describe('design token export', () => {
 
   it('is serialisable', () => {
     expect(() => JSON.stringify(exportDtcg(palette))).not.toThrow()
+  })
+})
+
+describe('CSV export', () => {
+  const rows = () => exportCsv(palette).trimEnd().split('\n')
+
+  it('emits a header and one row per swatch', () => {
+    const swatches = palette.ramps.reduce((n, ramp) => n + ramp.swatches.length, 0)
+    expect(rows()).toHaveLength(swatches + 1)
+  })
+
+  it('gives every row the same number of columns as the header', () => {
+    const all = rows()
+    const width = all[0].split(',').length
+    for (const row of all.slice(1)) {
+      expect(row.split(',').length, row).toBe(width)
+    }
+  })
+
+  it('carries the measurements, not just the colours', () => {
+    const [header] = rows()
+    for (const column of ['hex', 'luminance', 'contrast_on_white', 'apca_with_black_text']) {
+      expect(header).toContain(column)
+    }
+  })
+
+  it('reports the same hex the palette shipped', () => {
+    const seeded = palette.ramps.find((r) => r.seed)!
+    const swatch = seeded.swatches[0]
+    const row = rows().find((r) => r.startsWith(`${seeded.name},${swatch.label},`))
+    expect(row).toBeDefined()
+    expect(row).toContain(swatch.hex)
+  })
+
+  it('leaves the hue cell empty for a pure grey rather than inventing an angle', () => {
+    // The default neutrals are tinted, so they do carry a hue. Only an
+    // untinted ramp has no angle to report, which is the case worth pinning.
+    const untinted = generatePalette({
+      seeds: [{ color: '#635bff' }],
+      neutrals: { tintStrength: 0 },
+    })
+    const grey = untinted.ramps.find((r) => r.swatches.every((sw) => sw.oklch.c === 0))
+    expect(grey, 'expected an achromatic ramp at zero tint').toBeDefined()
+
+    const lines = exportCsv(untinted).trimEnd().split('\n')
+    const hue = lines[0].split(',').indexOf('oklch_h')
+    const greyRows = lines.filter((r) => r.startsWith(`${grey!.name},`))
+    expect(greyRows.length).toBeGreaterThan(0)
+    for (const row of greyRows) {
+      expect(row.split(',')[hue], row).toBe('')
+    }
+  })
+
+  it('keeps the columns aligned when a ramp name contains a comma', () => {
+    // Slugging is what actually disarms the comma; the quoting in the exporter
+    // is the belt to that pair of braces. Either way the row must not shift.
+    const awkward = generatePalette({ seeds: [{ color: '#635bff', name: 'Brand, primary' }] })
+    const lines = exportCsv(awkward).trimEnd().split('\n')
+    const width = lines[0].split(',').length
+    for (const row of lines.slice(1)) {
+      expect(row.split(',').length, row).toBe(width)
+    }
+    expect(lines.some((r) => r.startsWith('brand-primary,'))).toBe(true)
+  })
+
+  it('compact keeps only what identifies a colour', () => {
+    const compact = exportCsv(palette, { compact: true })
+    expect(compact.split('\n')[0]).toBe('family,shade,hex')
+    expect(compact).not.toContain('luminance')
   })
 })
 

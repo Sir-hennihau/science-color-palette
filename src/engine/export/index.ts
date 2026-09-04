@@ -4,14 +4,15 @@
 
 import type { Palette } from '../types.ts'
 import { exportCss, type CssOptions } from './css.ts'
+import { exportCsv, type CsvOptions } from './csv.ts'
 import { exportDtcg, type DtcgOptions } from './dtcg.ts'
 import { exportJson, type JsonOptions } from './json.ts'
 import { exportTailwindTheme, type TailwindOptions } from './tailwind.ts'
 
-export { exportCss, exportDtcg, exportJson, exportTailwindTheme }
-export type { CssOptions, DtcgOptions, JsonOptions, TailwindOptions }
+export { exportCss, exportCsv, exportDtcg, exportJson, exportTailwindTheme }
+export type { CssOptions, CsvOptions, DtcgOptions, JsonOptions, TailwindOptions }
 
-export type ExportFormat = 'css' | 'tailwind' | 'json' | 'dtcg'
+export type ExportFormat = 'css' | 'tailwind' | 'json' | 'dtcg' | 'csv'
 
 export interface ExportDescriptor {
   format: ExportFormat
@@ -22,7 +23,7 @@ export interface ExportDescriptor {
   filename: string
   mimeType: string
   /** Syntax hint for a code block. */
-  language: 'css' | 'json'
+  language: 'css' | 'json' | 'csv'
 }
 
 export const EXPORT_FORMATS: readonly ExportDescriptor[] = [
@@ -58,6 +59,14 @@ export const EXPORT_FORMATS: readonly ExportDescriptor[] = [
     mimeType: 'application/json',
     language: 'json',
   },
+  {
+    format: 'csv',
+    title: 'CSV',
+    description: 'One row per shade with every measurement, for a spreadsheet.',
+    filename: 'palette.csv',
+    mimeType: 'text/csv',
+    language: 'csv',
+  },
 ]
 
 /** Render a palette in one of the supported formats. */
@@ -71,5 +80,7 @@ export function exportPalette(palette: Palette, format: ExportFormat): string {
       return JSON.stringify(exportJson(palette, { compact: true }), null, 2) + '\n'
     case 'dtcg':
       return JSON.stringify(exportDtcg(palette), null, 2) + '\n'
+    case 'csv':
+      return exportCsv(palette)
   }
 }

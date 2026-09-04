@@ -2,13 +2,16 @@ import { createFileRoute, stripSearchParams, useNavigate } from '@tanstack/react
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Controls } from '../components/Controls.tsx'
+import { DocLink, SiteNav } from '../components/DocPage.tsx'
+import { ThemeToggle } from '../components/ThemeToggle.tsx'
 import { ContrastPanel } from '../components/ContrastPanel.tsx'
 import { EnvelopePanel } from '../components/EnvelopePanel.tsx'
 import { ExportPanel } from '../components/ExportPanel.tsx'
 import { PaletteBoard } from '../components/PaletteBoard.tsx'
 import { SwatchInspector } from '../components/SwatchInspector.tsx'
 import { PaletteSessionProvider, usePaletteSession } from '../lib/palette-session.tsx'
-import { applyTheme, copyText, isBrowser, readTheme, type ThemeChoice } from '../lib/browser.ts'
+import { copyText, downloadText, isBrowser } from '../lib/browser.ts'
+import { EXPORT_FORMATS, exportPalette } from '../engine/index.ts'
 import { SEARCH_DEFAULTS, paletteSearchSchema } from '../lib/search-schema.ts'
 
 export const Route = createFileRoute('/')({
@@ -178,9 +181,10 @@ function Tool() {
 function Header({ onCopied }: { onCopied: (message: string) => void }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
-      <div className="flex items-baseline gap-3">
+      <div className="flex items-baseline gap-4">
         <h1 className="text-[14.5px] font-semibold tracking-tight">Science Color Palette</h1>
-        <p className="hidden text-[12px] text-ink-muted md:block">
+        <SiteNav />
+        <p className="hidden text-[12px] text-ink-muted xl:block">
           A full colour palette from one or two colours, built on what the eye actually sees
         </p>
       </div>
@@ -198,9 +202,97 @@ function Header({ onCopied }: { onCopied: (message: string) => void }) {
         >
           Copy link
         </button>
+        <ExportMenu onSaved={onCopied} />
         <ThemeToggle />
       </div>
     </header>
+  )
+}
+
+/**
+ * Download the palette.
+ *
+ * Two formats rather than the four the export panel offers: this is the "just
+ * give me the file" path, and JSON and CSV are the two that go straight into
+ * something else — a build script and a spreadsheet. The stylesheet formats
+ * stay in the panel below, where their source can be read before it is taken.
+ *
+ * Labelled "Download" rather than "Export" deliberately: the panel below
+ * already has an Export tab, and two controls with one word between them —
+ * doing different things — is how a person ends up in the wrong place.
+ */
+function ExportMenu({ onSaved }: { onSaved: (message: string) => void }) {
+  const { palette } = usePaletteSession()
+  const [isOpen, setIsOpen] = useState(false)
+  const menu = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) setIsOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isOpen])
+
+  const offered = EXPORT_FORMATS.filter((d) => d.format === 'json' || d.format === 'csv')
+
+  return (
+    <div ref={menu} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        className="flex items-center gap-1.5 border border-line px-2.5 py-1 text-[12px] hover:border-ink"
+      >
+        Download
+        <svg viewBox="0 0 10 10" className="h-2 w-2" aria-hidden="true">
+          <path
+            d="M1 3.5L5 7.5l4-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          aria-label="Download the palette"
+          className="absolute right-0 top-8 z-30 w-52 border border-line-strong bg-bg py-1 shadow-lg"
+        >
+          {offered.map((descriptor) => (
+            <button
+              key={descriptor.format}
+              type="button"
+              onClick={() => {
+                downloadText(
+                  descriptor.filename,
+                  exportPalette(palette, descriptor.format),
+                  descriptor.mimeType,
+                )
+                setIsOpen(false)
+                onSaved(`Saved ${descriptor.filename}`)
+              }}
+              className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-sunken"
+            >
+              <span className="text-[12px]">{descriptor.title}</span>
+              <span className="text-[11px] text-ink-muted">{descriptor.filename}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -253,46 +345,22 @@ function UndoRedo() {
   )
 }
 
-function ThemeToggle() {
-  const [choice, setChoice] = useState<ThemeChoice>('system')
 
-  useEffect(() => setChoice(readTheme()), [])
-
-  const set = (next: ThemeChoice) => {
-    setChoice(next)
-    applyTheme(next)
-  }
-
-  return (
-    <div role="group" aria-label="Appearance" className="flex border border-line">
-      {(['light', 'dark', 'system'] as const).map((option, index) => (
-        <button
-          key={option}
-          type="button"
-          aria-pressed={choice === option}
-          onClick={() => set(option)}
-          className={[
-            'px-2 py-1 text-[11.5px]',
-            index > 0 ? 'border-l border-line' : '',
-            choice === option ? 'bg-inverse-bg text-inverse-ink' : 'text-ink-muted hover:text-ink',
-          ].join(' ')}
-        >
-          {option === 'light' ? 'Light' : option === 'dark' ? 'Dark' : 'Auto'}
-        </button>
-      ))}
-    </div>
-  )
-}
-
+/**
+ * The method, in one sentence, with the long version a click away.
+ *
+ * This used to be the whole argument in five lines of small print at the bottom
+ * of a working tool, which is the least likely place anyone reads an argument.
+ * It now lives on its own page and this is the door to it.
+ */
 function Footnote() {
   return (
-    <footer className="mt-10 max-w-[74ch] border-t border-line pt-4 text-[11.5px] leading-relaxed text-ink-muted">
+    <footer className="mt-10 max-w-[74ch] border-t border-line pt-4 text-[12px] leading-relaxed text-ink-muted">
       <p>
-        Shades are placed by relative luminance, which is the only thing WCAG contrast depends on,
-        so the same shade number carries the same contrast in every hue. Colourfulness is then a
-        share of what each hue can actually reach at that lightness — the reason a yellow ramp
-        peaks light and a blue one peaks dark. Colours are solved in OKLCH and every one is checked
-        against what a screen can display, since browsers clip rather than map.
+        Shades are placed by relative luminance — the only thing WCAG contrast depends on — so the
+        same shade number carries the same contrast in every hue.{' '}
+        <DocLink to="/how-to">What every number means</DocLink>, or{' '}
+        <DocLink to="/about">where the method comes from</DocLink>.
       </p>
     </footer>
   )

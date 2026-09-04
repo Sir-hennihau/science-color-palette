@@ -191,21 +191,43 @@ await page.waitForTimeout(300)
 check('a swatch copies from the keyboard',
   (await page.getByText(`Copied ${targetHex}`).count()) > 0, targetHex)
 
+// --- the reading pages ------------------------------------------------------
+for (const [path, heading] of [['/how-to', 'How to read it'], ['/about', 'About']]) {
+  await open(path)
+  check(`${path} renders`,
+    (await page.getByRole('heading', { level: 1, name: heading }).count()) === 1)
+  check(`${path} offers its own contents`,
+    (await page.getByRole('navigation', { name: 'On this page' }).getByRole('link').count()) >= 5)
+}
+
+await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Tool' }).click()
+await page.waitForSelector('[data-ready="true"]')
+check('the navigation returns to the tool',
+  (await page.locator('[data-ramp]').count()) > 0)
+
 // --- accessibility ----------------------------------------------------------
+// Every surface, both themes. A tool that reports contrast has to pass its own
+// audit on the pages that explain the reporting, not only on the tool itself.
 for (const scheme of ['light', 'dark']) {
   await page.emulateMedia({ colorScheme: scheme })
-  await open('/')
-  await page.addScriptTag({ url: 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js' })
-  const violations = await page.evaluate(async () => {
-    const r = await window.axe.run(document, {
-      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+
+  for (const path of ['/', '/how-to', '/about']) {
+    await open(path)
+    await page.addScriptTag({ url: 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js' })
+    const violations = await page.evaluate(async () => {
+      const r = await window.axe.run(document, {
+        runOnly: {
+          type: 'tag',
+          values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'],
+        },
+      })
+      return r.violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => `${v.id} (${v.nodes.length})`)
     })
-    return r.violations
-      .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-      .map((v) => `${v.id} (${v.nodes.length})`)
-  })
-  check(`no serious accessibility violations in ${scheme} mode`, violations.length === 0,
-    violations.join(', '))
+    check(`no serious accessibility violations on ${path} in ${scheme} mode`,
+      violations.length === 0, violations.join(', '))
+  }
 }
 
 check('no console or page errors throughout', errors.length === 0, errors.slice(0, 3).join(' | '))

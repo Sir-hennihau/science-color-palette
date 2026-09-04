@@ -127,6 +127,21 @@ describe('generating a palette', () => {
     expect(crowded.warnings.map((w) => w.code)).toContain('SPECTRUM_CROWDED')
   })
 
+  it('says when the light end has fewer colours than it has rows', () => {
+    // Crowding on the wheel and merging in the light shades are different
+    // failures. The lightest shades are held to a small absolute chroma, so
+    // hues converge there long before they do at mid-ramp: ten families are
+    // comfortable, sixteen are not, whatever their hue angles say.
+    const roomy = generatePalette({ seeds: [{ color: BLURPLE }] })
+    expect(roomy.warnings.map((w) => w.code)).not.toContain('LIGHT_SHADES_MERGED')
+
+    const many = generatePalette({
+      seeds: [{ color: BLURPLE }],
+      spectrum: { families: 16 },
+    })
+    expect(many.warnings.map((w) => w.code)).toContain('LIGHT_SHADES_MERGED')
+  })
+
   it('merges two seeds that are the same colour', () => {
     // Two hues within ten degrees cannot anchor two distinct families, so one
     // family carries both rather than the palette gaining a duplicate row.
@@ -210,6 +225,64 @@ describe('generating a palette', () => {
           `${ramp.name} ${swatch.label} (${swatch.hex})`,
         ).toBeGreaterThanOrEqual(target)
       }
+    }
+  })
+
+  it('gives those ratios against the palette own shade 50, not only white', () => {
+    // The point of the whole contract change. A step solved to exactly 4.5:1 on
+    // white lands at 4.30:1 on shade 50, and `bg-*-50` is the background these
+    // colours are used on — so the promise is made against the lightest shade,
+    // which implies the one against white rather than the other way round.
+    const palette = generatePalette({
+      seeds: [{ color: '#ffff00' }, { color: '#0000ff' }],
+    })
+
+    const expected: Record<number, number> = { 500: 3, 600: 4.5, 700: 7 }
+
+    for (const ramp of palette.ramps) {
+      if (!ramp.report.usesSharedLadder) continue
+      const lightest = ramp.swatches[0].hex
+
+      for (const swatch of ramp.swatches) {
+        const target = expected[swatch.label]
+        if (target === undefined) continue
+
+        expect(
+          swatch.wcag.onLightest,
+          `${ramp.name} ${swatch.label} (${swatch.hex}) on ${lightest}`,
+        ).toBeGreaterThanOrEqual(target)
+        expect(wcagContrastHex(swatch.hex, lightest)).toBeCloseTo(swatch.wcag.onLightest, 9)
+      }
+    }
+  })
+
+  it('pins the step separations the tool advertises', () => {
+    // The README, the CSS export header and the contrast panel all quote these
+    // numbers. They are computed rather than written down, but they are also a
+    // headline claim, so a change to the ladder that quietly loosens them
+    // should fail here rather than reach a user.
+    const table = generatePalette({ seeds: [{ color: BLURPLE }] }).sharedPairTable
+    const first = (ratio: number) => table.find((e) => e.minWcag >= ratio)?.distance
+
+    expect(first(3)).toBe(5)
+    expect(first(4.5)).toBe(6)
+    expect(first(7)).toBe(7)
+  })
+
+  it('takes the worst APCA polarity, not just dark text on light', () => {
+    // APCA scores a pair differently in each direction, so a minimum over one
+    // direction is not a minimum. Across this ladder the two disagree by up to
+    // a couple of Lc, in both directions depending on separation.
+    const ramp = generatePalette({ seeds: [{ color: BLURPLE }] }).ramps[0]
+
+    for (const entry of ramp.report.pairTable) {
+      let worst = Infinity
+      for (let i = 0; i + entry.distance < ramp.swatches.length; i++) {
+        const light = ramp.swatches[i].hex
+        const dark = ramp.swatches[i + entry.distance].hex
+        worst = Math.min(worst, Math.abs(apcaLc(dark, light)), Math.abs(apcaLc(light, dark)))
+      }
+      expect(entry.minApcaLc, `distance ${entry.distance}`).toBeCloseTo(worst, 2)
     }
   })
 

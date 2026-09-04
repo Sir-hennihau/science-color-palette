@@ -36,7 +36,7 @@ Browser checks need a server already running, and take `APP_URL` so the same
 checks run against dev or the built output:
 
 ```bash
-node scripts/e2e.mjs                              # 34 checks incl. axe, defaults to :3002
+node scripts/e2e.mjs                              # 43 checks incl. axe, defaults to :3002
 APP_URL=http://localhost:3000 node scripts/e2e.mjs
 node scripts/screenshot.mjs                       # light/dark/mobile to /tmp/scp-shots
 ```
@@ -166,6 +166,12 @@ Grouped by what they are for:
   first check pays for the whole run, hence the long per-test timeout.
 - **`performance.test.ts`** — budget assertions, not benchmarks. Vitest 5
   removed `bench` from its main export.
+
+There are three routes: `/` is the tool, `/how-to` explains every reported
+value and `/about` covers the method and its sources. The two reading pages
+share `components/DocPage.tsx`, which owns the shell, the navigation and the
+small set of reading primitives; adding a route file means running
+`pnpm generate-routes`.
 
 `scripts/e2e.mjs` waits on a `[data-ready="true"]` attribute set by a mount
 effect before interacting. "Painted" and "interactive" are different moments,

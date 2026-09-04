@@ -131,7 +131,15 @@ describe('invariants for any palette', () => {
     for (const ramp of paletteFor(config).ramps) {
       for (const swatch of ramp.swatches) {
         for (const guarantee of swatch.guarantees) {
-          const background = guarantee.kind === 'ratioOnWhite' ? '#ffffff' : '#000000'
+          // Spelled out rather than imported, so the check stays independent of
+          // the code it is checking. A `ratioOnLightest` contract is measured
+          // against this ramp's own shade 50.
+          const background =
+            guarantee.kind === 'ratioOnWhite'
+              ? '#ffffff'
+              : guarantee.kind === 'ratioOnBlack'
+                ? '#000000'
+                : ramp.swatches[0].hex
           expect(guarantee.actual).toBeCloseTo(wcagContrastHex(swatch.hex, background), 3)
         }
       }

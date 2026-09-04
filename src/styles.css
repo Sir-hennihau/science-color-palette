@@ -10,6 +10,14 @@
  * neutral grey surrounds in the first place. So there is no accent hue
  * anywhere in the shell: focus, selection and active states are carried by
  * weight, rule and inversion instead. The palette is the only colour on screen.
+ *
+ * One deliberate exception: the "Pick a colour" button in the controls is
+ * filled with the shade the palette calculated for that seed, because it is the
+ * primary call to action and was previously the quietest thing in the band. It
+ * is driven from the palette inline rather than from a token here, it is the
+ * only tinted chrome, and it sits above the swatches rather than among them, so
+ * it does not become the surround for anything being judged. Its label uses the
+ * swatch's `onHexWcag`, so the tool still passes its own contrast audit.
  */
 :root {
   --app-bg: #ffffff;
@@ -101,6 +109,30 @@
     outline: 2px solid var(--app-ink);
     outline-offset: 2px;
     border-radius: 2px;
+  }
+
+  /*
+   * The surfaces the browser draws for us still belong to the booth.
+   *
+   * Selection, the caret and the scrollbars ship with a system accent — blue on
+   * most platforms — which is exactly the one thing this interface cannot have:
+   * a hue of its own sitting next to a swatch being judged. They are inverted
+   * or greyed here for the same reason every other state is.
+   */
+  ::selection {
+    background: var(--app-inverse-bg);
+    color: var(--app-inverse-ink);
+  }
+
+  html {
+    caret-color: var(--app-ink);
+    scrollbar-color: var(--app-line-strong) transparent;
+  }
+
+  /* Underlines sit clear of descenders rather than through them. */
+  a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: from-font;
   }
 
   @media (prefers-reduced-motion: reduce) {

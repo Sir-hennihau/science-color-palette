@@ -22,13 +22,23 @@ export function wcagContrastHex(a: string, b: string): number {
 }
 
 /**
+ * Luminance a colour must have to sit `ratio` *below* a lighter reference.
+ *
+ * Inverts `(reference + 0.05) / (Y + 0.05) = ratio`. A negative result means
+ * the ratio is unreachable against that reference — nothing is darker than
+ * black — and callers are expected to reject rather than clamp it.
+ */
+export function yForRatioBelow(reference: number, ratio: number): number {
+  return (reference + 0.05) / ratio - 0.05
+}
+
+/**
  * Luminance a colour must have to reach `ratio` against white.
  *
- * Inverts `(1 + 0.05) / (Y + 0.05) = ratio`. The canonical targets fall out as
- * 3:1 -> 0.3, 4.5:1 -> 0.18333, 7:1 -> 0.1.
+ * The canonical targets fall out as 3:1 -> 0.3, 4.5:1 -> 0.18333, 7:1 -> 0.1.
  */
 export function yForRatioOnWhite(ratio: number): number {
-  return 1.05 / ratio - 0.05
+  return yForRatioBelow(1, ratio)
 }
 
 /** Luminance a colour must have to reach `ratio` against black. */
