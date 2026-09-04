@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { generatePalette } from '../palette.ts'
 import { inGamut } from '../color/gamut.ts'
+import { apcaLc } from '../contrast/apca.ts'
 import { wcagContrastHex } from '../contrast/wcag.ts'
 import { EngineError, type Palette } from '../types.ts'
 
@@ -154,14 +155,16 @@ describe('generating a palette', () => {
   })
 
   it('picks legible label text for every swatch', () => {
+    // Judged by APCA, which is what the engine follows; see the property tests
+    // for the case where WCAG would have chosen the harder-to-read option.
     const palette = generatePalette({ seeds: [{ color: BLURPLE }] })
     for (const ramp of palette.ramps) {
       for (const swatch of ramp.swatches) {
         expect(['#000000', '#ffffff']).toContain(swatch.onHex)
         expect(
-          wcagContrastHex(swatch.onHex, swatch.hex),
+          Math.abs(apcaLc(swatch.onHex, swatch.hex)),
           `${ramp.name} ${swatch.label}`,
-        ).toBeGreaterThan(3)
+        ).toBeGreaterThan(45)
       }
     }
   })

@@ -213,9 +213,18 @@ function nudge(yTarget: number, contracts: LadderContract[], attempt: number): n
 /**
  * Black or white, whichever is more legible on this colour.
  *
- * Judged by APCA magnitude rather than WCAG ratio: this only affects the label
- * drawn on a swatch, and APCA is the better predictor of which one a reader
- * will actually find easier.
+ * Judged by APCA, and the two rulers genuinely disagree here. On a mid blue
+ * like `#6092ff`, WCAG scores black at 7.05:1 against white at 2.98:1 and so
+ * prefers black; APCA scores black at Lc 48 against white at Lc 61 and prefers
+ * white. Anyone who has put a label on a mid-tone button knows white is the
+ * readable one — this is WCAG's well-documented habit of overstating dark text
+ * on mid-tone backgrounds, and following it here would mean picking the harder
+ * to read option to satisfy a number.
+ *
+ * Both sets of measurements are on every swatch, so a consumer that must follow
+ * WCAG's preference can compute it. Choosing that way always yields at least
+ * 4.58:1, since the worst case is the crossover luminance where black and white
+ * score equally.
  */
 function bestTextOn(hex: string): string {
   const onBlack = Math.abs(apcaLc('#000000', hex))

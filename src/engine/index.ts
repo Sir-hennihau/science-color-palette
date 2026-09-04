@@ -83,6 +83,22 @@ export { ALL_HARMONY_KINDS, harmonyHues } from './harmony.ts'
 export { blendTowardHue, describeDelta, MAX_BLEND_ROTATION } from './seeds.ts'
 export { NEUTRAL_MAX_CHROMA } from './neutrals.ts'
 
+// Export formats.
+export {
+  EXPORT_FORMATS,
+  exportCss,
+  exportDtcg,
+  exportJson,
+  exportPalette,
+  exportTailwindTheme,
+  type CssOptions,
+  type DtcgOptions,
+  type ExportDescriptor,
+  type ExportFormat,
+  type JsonOptions,
+  type TailwindOptions,
+} from './export/index.ts'
+
 export { ALGORITHM_VERSION, ENGINE_VERSION } from './version.ts'
 
 export * from './types.ts'
