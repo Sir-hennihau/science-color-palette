@@ -1,5 +1,7 @@
 # Science Color Palette
 
+**[Open the tool →](https://sir-hennihau.github.io/science-color-palette/)**
+
 Enter one or two colours, get a full palette: a spectrum of named colour
 families walking the hue circle from yours, each with a shade ramp, plus tinted
 greys — all built so that a given shade number carries the same contrast in
@@ -12,10 +14,11 @@ design systems on take.
 
 ```bash
 pnpm install
-pnpm dev        # http://localhost:3000
-pnpm test       # engine suite, 199 tests
+pnpm dev          # http://localhost:3000
+pnpm test         # engine suite, 199 tests
 pnpm typecheck
-pnpm build      # static output in dist/client
+pnpm build        # static output in dist/client
+pnpm build:pages  # the same, plus the entry points a static host needs
 ```
 
 ## Why this is not just HSL with extra steps
